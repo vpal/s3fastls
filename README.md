@@ -1,6 +1,6 @@
 # s3fastls
 
-s3fastls is a command-line tool for recursively listing Amazon S3 buckets in a highly concurrent manner. It uses "/" as a delimiter to simulate directory traversal, starting a new S3 ListObjectsV2 pager for each discovered prefix (e.g., `a/`, then `a/b/`, then `a/b/c/`, etc.), enabling fast and deep exploration of S3 bucket hierarchies.
+s3fastls is a command-line tool and Go library for recursively listing Amazon S3 buckets in a highly concurrent manner. It uses "/" as a delimiter to simulate directory traversal, starting a new S3 ListObjectsV2 pager for each discovered prefix (e.g., `a/`, then `a/b/`, then `a/b/c/`, etc.), enabling fast and deep exploration of S3 bucket hierarchies.
 
 ## Features
 - **Recursive and concurrent listing**: Spawns a new listing goroutine for each discovered prefix, allowing for fast traversal of large and deeply nested S3 buckets.
@@ -8,12 +8,14 @@ s3fastls is a command-line tool for recursively listing Amazon S3 buckets in a h
 - **Thread control**: The number of concurrent prefix listing threads is user-configurable via the `--threads` flag (defaults to the number of CPU cores).
 - **Debug mode**: Optional debug output to trace which prefixes are being listed.
 - **Custom endpoint support**: Can be used with S3-compatible storage by specifying a custom endpoint.
+- **Library and CLI**: Use as a Go library or as a standalone command-line tool.
 
-## Usage
+## Usage as a Command-Line Tool
 ```
 s3fastls --bucket <bucket> --region <region> [--prefix <prefix>] [--fields Key,Size] [--output-format tsv] [--threads N] [--debug] [--endpoint <url>]
 ```
 
+### Command Line Options
 - `--bucket` (required): Name of the S3 bucket.
 - `--region` (required): AWS region of the bucket.
 - `--prefix`: Prefix to start listing from (default: root).
@@ -23,9 +25,45 @@ s3fastls --bucket <bucket> --region <region> [--prefix <prefix>] [--fields Key,S
 - `--debug`: Print debug information about current prefixes.
 - `--endpoint`: Custom S3 endpoint (for S3-compatible storage).
 
-## Example
+### Example
 ```
 s3fastls --bucket my-bucket --region us-east-1 --fields Key,Size,LastModified --output-format tsv --threads 16
+```
+
+## Usage as a Go Library
+
+### Basic Usage
+```go
+import "s3fastls/s3fastls"
+
+// Create AWS config and client
+cfg, _ := config.LoadDefaultConfig(context.TODO(), config.WithRegion("us-east-1"))
+client := s3fastls.MakeS3Client(cfg, "")
+
+// Configure listing options
+fields := []s3fastls.Field{s3fastls.FieldKey, s3fastls.FieldSize}
+s3ls := s3fastls.NewS3FastLS(client, "my-bucket", fields, s3fastls.OutputTSV, false, 16)
+s3ls.Run("", 16)
+```
+
+### Available Fields
+```go
+s3fastls.FieldKey          // Object key
+s3fastls.FieldSize         // Object size in bytes
+s3fastls.FieldLastModified // Last modified timestamp
+s3fastls.FieldETag         // Object ETag
+s3fastls.FieldStorageClass // Storage class
+```
+
+## Build and Test
+To build the command-line tool:
+```
+go build -o s3fastls ./
+```
+
+To run tests:
+```
+go test ./...
 ```
 
 ## Important Notes
