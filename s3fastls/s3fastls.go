@@ -27,18 +27,18 @@ const (
 	FieldStorageClass Field = "StorageClass"
 )
 
-var Fields = []Field{
-	FieldKey, FieldSize, FieldLastModified, FieldETag, FieldStorageClass,
-}
-
 type OutputFormat string
 
 const (
 	OutputTSV OutputFormat = "tsv"
 )
 
-var OutputFormats = []OutputFormat{
-	OutputTSV,
+// OutputFormatter is a function that formats a slice of strings for output
+type OutputFormatter func([]string) string
+
+// Format functions for different output formats
+var formatters = map[OutputFormat]OutputFormatter{
+	OutputTSV: func(fields []string) string { return strings.Join(fields, "\t") },
 }
 
 // --- S3FastLS struct and methods ---
@@ -47,17 +47,23 @@ type S3FastLS struct {
 	bucket       string
 	fields       []Field
 	outputFormat OutputFormat
+	formatter    OutputFormatter
 	debug        bool
 	sem          chan struct{}
 }
 
 func NewS3FastLS(client *s3.Client, bucket string, fields []Field, outputFormat OutputFormat, debug bool, threads int) *S3FastLS {
+	formatter, ok := formatters[outputFormat]
+	if !ok {
+		log.Fatalf("unsupported output format: %s", outputFormat)
+	}
 	sem := make(chan struct{}, threads)
 	return &S3FastLS{
 		client:       client,
 		bucket:       bucket,
 		fields:       fields,
 		outputFormat: outputFormat,
+		formatter:    formatter,
 		debug:        debug,
 		sem:          sem,
 	}
@@ -129,10 +135,8 @@ func (s *S3FastLS) writeOutput(outputCh <-chan []string, writeWg *sync.WaitGroup
 	defer cleanup()
 
 	for outFields := range outputCh {
-		if s.outputFormat == OutputTSV {
-			if _, err := fmt.Fprintln(w, strings.Join(outFields, "\t")); err != nil {
-				return fmt.Errorf("failed to write output: %v", err)
-			}
+		if _, err := fmt.Fprintln(w, s.formatter(outFields)); err != nil {
+			return fmt.Errorf("failed to write output: %v", err)
 		}
 	}
 	return nil
