@@ -37,7 +37,7 @@ s3fastls --bucket my-bucket --region us-east-1 --fields Key,Size,LastModified --
 
 ### Basic Usage
 ```go
-import "s3fastls/s3fastls"
+import "github.com/vpal/s3fastls/s3fastls"
 
 // Create AWS config and client
 cfg, _ := config.LoadDefaultConfig(context.TODO(), config.WithRegion("us-east-1"))
@@ -54,6 +54,11 @@ s3ls := s3fastls.NewS3FastLS(client, "my-bucket", fields, s3fastls.OutputTSV, fa
 if err := s3ls.Run("", 16, "output.tsv"); err != nil {
     log.Fatal(err)
 }
+```
+
+### Installation
+```
+go get github.com/vpal/s3fastls
 ```
 
 ### Available Fields
