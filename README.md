@@ -8,11 +8,13 @@ s3fastls is a command-line tool and Go library for recursively listing Amazon S3
 - **Thread control**: The number of concurrent prefix listing threads is user-configurable via the `--threads` flag (defaults to the number of CPU cores).
 - **Debug mode**: Optional debug output to trace which prefixes are being listed.
 - **Custom endpoint support**: Can be used with S3-compatible storage by specifying a custom endpoint.
+- **File output**: Write results to a file instead of stdout using the `--output` flag.
+- **Configurable retry behavior**: Control retry attempts and backoff durations for S3 operations.
 - **Library and CLI**: Use as a Go library or as a standalone command-line tool.
 
 ## Usage as a Command-Line Tool
 ```
-s3fastls --bucket <bucket> --region <region> [--prefix <prefix>] [--fields Key,Size] [--output-format tsv] [--threads N] [--debug] [--endpoint <url>]
+s3fastls --bucket <bucket> --region <region> [options]
 ```
 
 ### Command Line Options
@@ -21,13 +23,14 @@ s3fastls --bucket <bucket> --region <region> [--prefix <prefix>] [--fields Key,S
 - `--prefix`: Prefix to start listing from (default: root).
 - `--fields`: Comma-separated list of fields to print (default: Key).
 - `--output-format`: Output format (default: tsv).
+- `--output`: Write output to file instead of stdout.
 - `--threads`: Number of concurrent prefix listing threads (default: number of CPU cores).
 - `--debug`: Print debug information about current prefixes.
 - `--endpoint`: Custom S3 endpoint (for S3-compatible storage).
 
 ### Example
 ```
-s3fastls --bucket my-bucket --region us-east-1 --fields Key,Size,LastModified --output-format tsv --threads 16
+s3fastls --bucket my-bucket --region us-east-1 --fields Key,Size,LastModified --output results.tsv --threads 16
 ```
 
 ## Usage as a Go Library
@@ -38,12 +41,19 @@ import "s3fastls/s3fastls"
 
 // Create AWS config and client
 cfg, _ := config.LoadDefaultConfig(context.TODO(), config.WithRegion("us-east-1"))
-client := s3fastls.MakeS3Client(cfg, "")
+
+// Configure retry behavior
+retryConfig := s3fastls.DefaultRetryConfig() // Or customize: MaxAttempts, MaxBackoff, MinBackoff
+client := s3fastls.MakeS3Client(cfg, "", retryConfig)
 
 // Configure listing options
 fields := []s3fastls.Field{s3fastls.FieldKey, s3fastls.FieldSize}
 s3ls := s3fastls.NewS3FastLS(client, "my-bucket", fields, s3fastls.OutputTSV, false, 16)
-s3ls.Run("", 16)
+
+// Run with optional output file
+if err := s3ls.Run("", 16, "output.tsv"); err != nil {
+    log.Fatal(err)
+}
 ```
 
 ### Available Fields
@@ -55,15 +65,19 @@ s3fastls.FieldETag         // Object ETag
 s3fastls.FieldStorageClass // Storage class
 ```
 
+### Retry Configuration
+```go
+retryConfig := s3fastls.RetryConfig{
+    MaxAttempts: 10,           // Maximum number of retry attempts
+    MaxBackoff:  30 * time.Second, // Maximum backoff duration between retries
+    MinBackoff:  1 * time.Second,  // Minimum backoff duration for first retry
+}
+```
+
 ## Build and Test
 To build the command-line tool:
 ```
 go build -o s3fastls ./
-```
-
-To run tests:
-```
-go test ./...
 ```
 
 ## Important Notes
