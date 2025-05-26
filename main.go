@@ -136,7 +136,8 @@ func main() {
 		log.Fatalf("failed to load AWS configuration: %v", err)
 	}
 
-	client := s3fastls.MakeS3Client(awsCfg, cfg.Endpoint)
+	retryConfig := s3fastls.DefaultRetryConfig()
+	client := s3fastls.MakeS3Client(awsCfg, cfg.Endpoint, retryConfig)
 	s3ls := s3fastls.NewS3FastLS(client, cfg.Bucket, cfg.Fields, cfg.OutputFormat, cfg.Debug, cfg.ThreadCount)
 	if err := s3ls.Run(cfg.Prefix, cfg.ThreadCount, cfg.OutputFile); err != nil {
 		log.Fatalf("failed to run s3fastls: %v", err)

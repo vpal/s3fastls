@@ -69,20 +69,35 @@ func NewS3FastLS(client *s3.Client, bucket string, fields []Field, outputFormat 
 	}
 }
 
-func MakeS3Client(cfg aws.Config, endpoint string) *s3.Client {
-	customRetryer := retry.AddWithMaxAttempts(retry.NewStandard(), 10)
-	if endpoint != "" {
-		return s3.NewFromConfig(cfg, func(o *s3.Options) {
-			o.BaseEndpoint = aws.String(endpoint)
-			o.Region = cfg.Region
-			o.Credentials = cfg.Credentials
-			o.Retryer = customRetryer
-		})
+// RetryConfig holds configuration for the S3 client retry behavior
+type RetryConfig struct {
+	MaxAttempts int
+	MaxBackoff  time.Duration
+	MinBackoff  time.Duration
+}
+
+// DefaultRetryConfig returns a RetryConfig with reasonable defaults
+func DefaultRetryConfig() RetryConfig {
+	return RetryConfig{
+		MaxAttempts: 10,
+		MaxBackoff:  30 * time.Second,
+		MinBackoff:  1 * time.Second,
 	}
+}
+
+func MakeS3Client(cfg aws.Config, endpoint string, retryConfig RetryConfig) *s3.Client {
+	customRetryer := retry.NewStandard(func(o *retry.StandardOptions) {
+		o.MaxAttempts = retryConfig.MaxAttempts
+		o.MaxBackoff = retryConfig.MaxBackoff
+	})
+
 	return s3.NewFromConfig(cfg, func(o *s3.Options) {
 		o.Region = cfg.Region
 		o.Credentials = cfg.Credentials
 		o.Retryer = customRetryer
+		if endpoint != "" {
+			o.BaseEndpoint = aws.String(endpoint)
+		}
 	})
 }
 
