@@ -3,7 +3,9 @@ package s3fastls
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -106,13 +108,34 @@ func (s *S3FastLS) processPages(pageContentCh <-chan []types.Object, outputCh ch
 	}
 }
 
-func (s *S3FastLS) writeOutput(outputCh <-chan []string, writeWg *sync.WaitGroup) {
+func outputWriter(outputFile string) (io.Writer, func(), error) {
+	if outputFile == "" {
+		return os.Stdout, func() {}, nil
+	}
+	f, err := os.Create(outputFile)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create output file: %v", err)
+	}
+	return f, func() { f.Close() }, nil
+}
+
+func (s *S3FastLS) writeOutput(outputCh <-chan []string, writeWg *sync.WaitGroup, outputFile string) error {
 	defer writeWg.Done()
+
+	w, cleanup, err := outputWriter(outputFile)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
 	for outFields := range outputCh {
 		if s.outputFormat == OutputTSV {
-			fmt.Println(strings.Join(outFields, "\t"))
+			if _, err := fmt.Fprintln(w, strings.Join(outFields, "\t")); err != nil {
+				return fmt.Errorf("failed to write output: %v", err)
+			}
 		}
 	}
+	return nil
 }
 
 func (s *S3FastLS) listPrefix(prefix string, pageContentCh chan<- []types.Object, listWg *sync.WaitGroup) {
@@ -147,9 +170,10 @@ func (s *S3FastLS) listPrefix(prefix string, pageContentCh chan<- []types.Object
 	}
 }
 
-func (s *S3FastLS) Run(prefix string, threadCount int) {
+func (s *S3FastLS) Run(prefix string, threadCount int, outputFile string) error {
 	pageContentCh := make(chan []types.Object, 4096)
 	outputCh := make(chan []string, 4096)
+	errCh := make(chan error, 1)
 
 	var listPrefixWg sync.WaitGroup
 	var processPagesWg sync.WaitGroup
@@ -161,7 +185,11 @@ func (s *S3FastLS) Run(prefix string, threadCount int) {
 	}
 
 	writeOutputWg.Add(1)
-	go s.writeOutput(outputCh, &writeOutputWg)
+	go func() {
+		if err := s.writeOutput(outputCh, &writeOutputWg, outputFile); err != nil {
+			errCh <- err
+		}
+	}()
 
 	listPrefixWg.Add(1)
 	go s.listPrefix(prefix, pageContentCh, &listPrefixWg)
@@ -171,4 +199,11 @@ func (s *S3FastLS) Run(prefix string, threadCount int) {
 	processPagesWg.Wait()
 	close(outputCh)
 	writeOutputWg.Wait()
+
+	select {
+	case err := <-errCh:
+		return err
+	default:
+		return nil
+	}
 }

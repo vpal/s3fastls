@@ -21,6 +21,7 @@ type Config struct {
 	Debug        bool
 	Fields       []s3fastls.Field
 	OutputFormat s3fastls.OutputFormat
+	OutputFile   string
 	Prefix       string
 	ThreadCount  int
 }
@@ -106,6 +107,7 @@ func parseFlags() *Config {
 	flag.BoolVar(&cfg.Debug, "debug", false, "Print debug information (current prefix)")
 	flag.Var(&fields, "fields", "Comma-separated list of S3 object fields to print (Key,Size,LastModified,ETag,StorageClass)")
 	flag.Var(&format, "output-format", "Output format: tsv (default)")
+	flag.StringVar(&cfg.OutputFile, "output", "", "Output file (default: stdout)")
 	flag.StringVar(&cfg.Prefix, "prefix", "", "Prefix to start listing from (default: root)")
 	flag.IntVar(&cfg.ThreadCount, "threads", runtime.NumCPU(), "Number of threads for listing prefixes")
 	flag.Parse()
@@ -136,5 +138,7 @@ func main() {
 
 	client := s3fastls.MakeS3Client(awsCfg, cfg.Endpoint)
 	s3ls := s3fastls.NewS3FastLS(client, cfg.Bucket, cfg.Fields, cfg.OutputFormat, cfg.Debug, cfg.ThreadCount)
-	s3ls.Run(cfg.Prefix, cfg.ThreadCount)
+	if err := s3ls.Run(cfg.Prefix, cfg.ThreadCount, cfg.OutputFile); err != nil {
+		log.Fatalf("failed to run s3fastls: %v", err)
+	}
 }
