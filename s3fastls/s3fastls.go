@@ -46,7 +46,7 @@ type s3FastLS struct {
 	client       *s3.Client
 	bucket       string
 	prefix       string
-	fields       []Field
+	outputFields []Field
 	outputFormat OutputFormat
 	outputWriter io.Writer
 	formatter    OutputFormatter
@@ -100,7 +100,7 @@ func (s *s3FastLS) processPages() {
 	for objs := range s.pageContentCh {
 		for _, obj := range objs {
 			var outFields []string
-			for _, field := range s.fields {
+			for _, field := range s.outputFields {
 				switch field {
 				case FieldKey:
 					outFields = append(outFields, aws.ToString(obj.Key))
@@ -205,7 +205,7 @@ func List(client *s3.Client, params S3FastLSParams) {
 		client:              client,
 		bucket:              params.Bucket,
 		prefix:              params.Prefix,
-		fields:              params.OutputFields,
+		outputFields:        params.OutputFields,
 		outputFormat:        params.OutputFormat,
 		outputWriter:        writer,
 		formatter:           formatters[params.OutputFormat],
