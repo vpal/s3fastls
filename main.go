@@ -8,7 +8,7 @@ import (
 	"runtime"
 	"strings"
 
-	"s3fastls/s3fastls"
+	"github.com/vpal/s3fastls/s3fastls"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 )

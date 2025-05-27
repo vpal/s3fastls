@@ -1,8 +1,9 @@
 package main
 
 import (
-	"s3fastls/s3fastls"
 	"testing"
+
+	"github.com/vpal/s3fastls/s3fastls"
 )
 
 func TestParseField(t *testing.T) {
