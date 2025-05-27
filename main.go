@@ -13,19 +13,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 )
 
-// Config holds the command-line configuration for s3fastls
-type Config struct {
-	Bucket       string
-	Endpoint     string
-	Region       string
-	Debug        bool
-	Fields       []s3fastls.Field
-	OutputFormat s3fastls.OutputFormat
-	OutputFile   string
-	Prefix       string
-	ThreadCount  int
-}
-
 // FieldsFlag implements flag.Value interface for parsing comma-separated field list
 type FieldsFlag []s3fastls.Field
 
@@ -67,7 +54,6 @@ func (f *OutputFormatFlag) Set(value string) error {
 	return nil
 }
 
-// parseField converts a string to a Field type
 func parseField(s string) (s3fastls.Field, error) {
 	switch s {
 	case string(s3fastls.FieldKey):
@@ -85,7 +71,6 @@ func parseField(s string) (s3fastls.Field, error) {
 	}
 }
 
-// parseOutputFormat converts a string to an OutputFormat type
 func parseOutputFormat(s string) (s3fastls.OutputFormat, error) {
 	switch s {
 	case string(s3fastls.OutputTSV):
@@ -95,51 +80,45 @@ func parseOutputFormat(s string) (s3fastls.OutputFormat, error) {
 	}
 }
 
-// parseFlags parses command-line flags and returns a Config
-func parseFlags() *Config {
+func parseFlags() *s3fastls.S3FastLSParams {
 	var fields FieldsFlag
 	var format OutputFormatFlag = OutputFormatFlag(s3fastls.OutputTSV)
 
-	cfg := &Config{}
-	flag.StringVar(&cfg.Bucket, "bucket", "", "The name of the S3 bucket to list")
-	flag.StringVar(&cfg.Endpoint, "endpoint", "", "The custom S3 endpoint to use (optional)")
-	flag.StringVar(&cfg.Region, "region", "", "The AWS region of the S3 bucket")
-	flag.BoolVar(&cfg.Debug, "debug", false, "Print debug information (current prefix)")
+	params := &s3fastls.S3FastLSParams{}
+	flag.StringVar(&params.Bucket, "bucket", "", "The name of the S3 bucket to list")
+	flag.StringVar(&params.Prefix, "prefix", "", "Prefix to start listing from (default: root)")
 	flag.Var(&fields, "fields", "Comma-separated list of S3 object fields to print (Key,Size,LastModified,ETag,StorageClass)")
 	flag.Var(&format, "output-format", "Output format: tsv (default)")
-	flag.StringVar(&cfg.OutputFile, "output", "", "Output file (default: stdout)")
-	flag.StringVar(&cfg.Prefix, "prefix", "", "Prefix to start listing from (default: root)")
-	flag.IntVar(&cfg.ThreadCount, "threads", runtime.NumCPU(), "Number of threads for listing prefixes")
+	flag.StringVar(&params.OutputFile, "output", "", "Output file (default: stdout)")
+	flag.IntVar(&params.Workers, "workers", runtime.NumCPU(), "Number of concurrent S3 listing workers")
+	flag.BoolVar(&params.Debug, "debug", false, "Print debug information (current prefix)")
 	flag.Parse()
 
-	if cfg.Bucket == "" {
+	if params.Bucket == "" {
 		log.Fatal("bucket parameter is required")
 	}
-	if cfg.Region == "" {
-		log.Fatal("region parameter is required")
-	}
 
-	cfg.Fields = []s3fastls.Field(fields)
-	if len(cfg.Fields) == 0 {
-		cfg.Fields = []s3fastls.Field{s3fastls.FieldKey}
+	params.Fields = []s3fastls.Field(fields)
+	if len(params.Fields) == 0 {
+		params.Fields = []s3fastls.Field{s3fastls.FieldKey}
 	}
-	cfg.OutputFormat = s3fastls.OutputFormat(format)
+	params.OutputFormat = s3fastls.OutputFormat(format)
 
-	return cfg
+	return params
 }
 
 func main() {
-	cfg := parseFlags()
+	params := parseFlags()
 
-	awsCfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion(cfg.Region))
+	awsCfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion("us-east-1"))
 	if err != nil {
 		log.Fatalf("failed to load AWS configuration: %v", err)
 	}
 
 	retryConfig := s3fastls.DefaultRetryConfig()
-	client := s3fastls.MakeS3Client(awsCfg, cfg.Endpoint, retryConfig)
-	s3ls := s3fastls.NewS3FastLS(client, cfg.Bucket, cfg.Fields, cfg.OutputFormat, cfg.Debug, cfg.ThreadCount)
-	if err := s3ls.Run(cfg.Prefix, cfg.ThreadCount, cfg.OutputFile); err != nil {
-		log.Fatalf("failed to run s3fastls: %v", err)
-	}
+	client := s3fastls.MakeS3Client(awsCfg, "", retryConfig)
+	s3fastls.List(
+		client,
+		*params,
+	)
 }

@@ -5,7 +5,7 @@ s3fastls is a command-line tool and Go library for recursively listing Amazon S3
 ## Features
 - **Recursive and concurrent listing**: Spawns a new listing goroutine for each discovered prefix, allowing for fast traversal of large and deeply nested S3 buckets.
 - **Customizable output**: Choose which S3 object fields to display (e.g., Key, Size, LastModified, ETag, StorageClass) and output format (currently TSV).
-- **Thread control**: The number of concurrent prefix listing threads is user-configurable via the `--threads` flag (defaults to the number of CPU cores).
+- **Thread control**: The number of concurrent prefix listing workers is user-configurable via the `--workers` flag (defaults to the number of CPU cores).
 - **Debug mode**: Optional debug output to trace which prefixes are being listed.
 - **Custom endpoint support**: Can be used with S3-compatible storage by specifying a custom endpoint.
 - **File output**: Write results to a file instead of stdout using the `--output` flag.
@@ -24,13 +24,13 @@ s3fastls --bucket <bucket> --region <region> [options]
 - `--fields`: Comma-separated list of fields to print (default: Key).
 - `--output-format`: Output format (default: tsv).
 - `--output`: Write output to file instead of stdout.
-- `--threads`: Number of concurrent prefix listing threads (default: number of CPU cores).
+- `--workers`: Number of concurrent S3 listing workers (default: number of CPU cores).
 - `--debug`: Print debug information about current prefixes.
 - `--endpoint`: Custom S3 endpoint (for S3-compatible storage).
 
 ### Example
 ```
-s3fastls --bucket my-bucket --region us-east-1 --fields Key,Size,LastModified --output results.tsv --threads 16
+s3fastls --bucket my-bucket --region us-east-1 --fields Key,Size,LastModified --output results.tsv --workers 16
 ```
 
 ## Usage as a Go Library
@@ -47,13 +47,18 @@ retryConfig := s3fastls.DefaultRetryConfig() // Or customize: MaxAttempts, MaxBa
 client := s3fastls.MakeS3Client(cfg, "", retryConfig)
 
 // Configure listing options
-fields := []s3fastls.Field{s3fastls.FieldKey, s3fastls.FieldSize}
-s3ls := s3fastls.NewS3FastLS(client, "my-bucket", fields, s3fastls.OutputTSV, false, 16)
-
-// Run with optional output file
-if err := s3ls.Run("", 16, "output.tsv"); err != nil {
-    log.Fatal(err)
+params := s3fastls.S3FastLSParams{
+    Bucket:       "my-bucket",
+    Prefix:       "", // or any prefix
+    Fields:       []s3fastls.Field{s3fastls.FieldKey, s3fastls.FieldSize},
+    OutputFormat: s3fastls.OutputTSV,
+    OutputFile:   "output.tsv", // or "" for stdout
+    Workers:      16,
+    Debug:        false,
 }
+
+// Run listing
+s3fastls.List(client, params)
 ```
 
 ### Installation
@@ -86,7 +91,7 @@ go build -o s3fastls ./
 ```
 
 ## Important Notes
-- **Too many threads can cause S3 to return HTTP 503 Slow Down errors.** Tune the `--threads` parameter according to your use case and S3 limits.
+- **Too many workers can cause S3 to return HTTP 503 Slow Down errors.** Tune the `--workers` parameter according to your use case and S3 limits.
 - This tool is designed for speed and concurrency, but aggressive settings may impact S3 performance or cost.
 - Use this tool at your own risk. The authors are not responsible for any data loss, API throttling, or unexpected costs incurred by its use.
 

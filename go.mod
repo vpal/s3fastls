@@ -1,4 +1,4 @@
-module s3fastls
+module github.com/vpal/s3fastls
 
 go 1.24.3
 
