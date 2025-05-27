@@ -159,13 +159,13 @@ func (s *s3FastLS) listPrefix(prefix string) {
 }
 
 func (s *s3FastLS) list() {
+	s.writeOutputWg.Add(1)
+	go s.writeOutput()
+
 	for i := 0; i < s.processPagesWorkers; i++ {
 		s.processPagesWg.Add(1)
 		go s.processPages()
 	}
-
-	s.writeOutputWg.Add(1)
-	go s.writeOutput()
 
 	s.listPrefixWg.Add(1)
 	go s.listPrefix(s.prefix)
