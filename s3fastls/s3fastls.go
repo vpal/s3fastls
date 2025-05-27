@@ -144,7 +144,7 @@ func (s *s3FastLS) listPrefix(prefix string) {
 	for paginator.HasMorePages() {
 		page, err := paginator.NextPage(context.TODO())
 		if err != nil {
-			log.Printf("Failed to list objects for prefix %q: %v", prefix, err)
+			log.Printf("failed to list objects for prefix %q: %v", prefix, err)
 			return
 		}
 		if len(page.Contents) > 0 {
