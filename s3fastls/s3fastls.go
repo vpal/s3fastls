@@ -181,7 +181,7 @@ func (s *s3FastLS) list() {
 type S3FastLSParams struct {
 	Bucket       string
 	Prefix       string
-	Fields       []Field
+	OutputFields []Field
 	OutputFormat OutputFormat
 	OutputFile   string
 	Workers      int
@@ -205,7 +205,7 @@ func List(client *s3.Client, params S3FastLSParams) {
 		client:              client,
 		bucket:              params.Bucket,
 		prefix:              params.Prefix,
-		fields:              params.Fields,
+		fields:              params.OutputFields,
 		outputFormat:        params.OutputFormat,
 		outputWriter:        writer,
 		formatter:           formatters[params.OutputFormat],

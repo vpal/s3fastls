@@ -98,9 +98,9 @@ func parseFlags() *s3fastls.S3FastLSParams {
 		log.Fatal("bucket parameter is required")
 	}
 
-	params.Fields = []s3fastls.Field(fields)
-	if len(params.Fields) == 0 {
-		params.Fields = []s3fastls.Field{s3fastls.FieldKey}
+	params.OutputFields = []s3fastls.Field(fields)
+	if len(params.OutputFields) == 0 {
+		params.OutputFields = []s3fastls.Field{s3fastls.FieldKey}
 	}
 	params.OutputFormat = s3fastls.OutputFormat(format)
 
