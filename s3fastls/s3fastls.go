@@ -151,9 +151,8 @@ func (s *s3FastLS) listPrefix(prefix string) {
 			s.pageContentCh <- page.Contents
 		}
 		for _, cp := range page.CommonPrefixes {
-			pfx := *cp.Prefix
 			s.listPrefixWg.Add(1)
-			go s.listPrefix(pfx)
+			go s.listPrefix(*cp.Prefix)
 		}
 	}
 }
