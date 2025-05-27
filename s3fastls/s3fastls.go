@@ -57,7 +57,7 @@ type s3FastLS struct {
 	processPagesWorkers int
 	pageContentCh       chan []types.Object
 	outputWriterCh      chan []string
-	sem                 chan struct{}
+	listPrefixSem       chan struct{}
 	listPrefixWg        *sync.WaitGroup
 	processPagesWg      *sync.WaitGroup
 	writeOutputWg       *sync.WaitGroup
@@ -130,8 +130,8 @@ func (s *s3FastLS) writeOutput() {
 
 func (s *s3FastLS) listPrefix(prefix string) {
 	defer s.listPrefixWg.Done()
-	s.sem <- struct{}{}        // acquire
-	defer func() { <-s.sem }() // release
+	s.listPrefixSem <- struct{}{}        // acquire
+	defer func() { <-s.listPrefixSem }() // release
 	if s.debug {
 		log.Printf("Listing prefix: %q", prefix)
 	}
@@ -214,7 +214,7 @@ func List(client *s3.Client, params S3FastLSParams) {
 		processPagesWorkers: 64,
 		pageContentCh:       make(chan []types.Object, 4096),
 		outputWriterCh:      make(chan []string, 4096),
-		sem:                 make(chan struct{}, params.Workers),
+		listPrefixSem:       make(chan struct{}, params.Workers),
 		listPrefixWg:        &sync.WaitGroup{},
 		processPagesWg:      &sync.WaitGroup{},
 		writeOutputWg:       &sync.WaitGroup{},
