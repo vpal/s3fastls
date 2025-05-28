@@ -20,13 +20,13 @@ s3fastls --bucket <bucket> --region <region> [options]
 ### Command Line Options
 - `--bucket` (required): Name of the S3 bucket.
 - `--region` (required): AWS region of the bucket.
+- `--endpoint`: Custom S3 endpoint (for S3-compatible storage).
 - `--prefix`: Prefix to start listing from (default: root).
 - `--fields`: Comma-separated list of fields to print (default: Key).
 - `--output-format`: Output format (default: tsv).
 - `--output`: Write output to file instead of stdout.
 - `--workers`: Number of concurrent S3 listing workers (default: number of CPU cores).
 - `--debug`: Print debug information about current prefixes.
-- `--endpoint`: Custom S3 endpoint (for S3-compatible storage).
 
 ### Example
 ```
