@@ -80,14 +80,13 @@ func parseOutputFormat(s string) (s3fastls.OutputFormat, error) {
 	}
 }
 
-func parseFlags() (*s3fastls.S3FastLSParams, string) {
+func parseFlags() (params *s3fastls.S3FastLSParams, region string, endpoint string) {
 	var fields FieldsFlag
 	var format OutputFormatFlag = OutputFormatFlag(s3fastls.OutputTSV)
 
-	params := &s3fastls.S3FastLSParams{}
-	var region string
 	flag.StringVar(&params.Bucket, "bucket", "", "The name of the S3 bucket to list")
 	flag.StringVar(&region, "region", "", "The AWS region of the S3 bucket (required)")
+	flag.StringVar(&endpoint, "endpoint", "", "Custom S3 endpoint (for S3-compatible storage)")
 	flag.StringVar(&params.Prefix, "prefix", "", "Prefix to start listing from (default: root)")
 	flag.Var(&fields, "fields", "Comma-separated list of S3 object fields to print (Key,Size,LastModified,ETag,StorageClass)")
 	flag.Var(&format, "output-format", "Output format: tsv (default)")
@@ -109,11 +108,11 @@ func parseFlags() (*s3fastls.S3FastLSParams, string) {
 	}
 	params.OutputFormat = s3fastls.OutputFormat(format)
 
-	return params, region
+	return params, region, endpoint
 }
 
 func main() {
-	params, region := parseFlags()
+	params, region, endpoint := parseFlags()
 
 	awsCfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion(region))
 	if err != nil {
@@ -121,7 +120,7 @@ func main() {
 	}
 
 	retryConfig := s3fastls.DefaultRetryConfig()
-	client := s3fastls.MakeS3Client(awsCfg, "", retryConfig)
+	client := s3fastls.MakeS3Client(awsCfg, endpoint, retryConfig)
 	s3fastls.List(
 		client,
 		*params,
