@@ -80,12 +80,14 @@ func parseOutputFormat(s string) (s3fastls.OutputFormat, error) {
 	}
 }
 
-func parseFlags() *s3fastls.S3FastLSParams {
+func parseFlags() (*s3fastls.S3FastLSParams, string) {
 	var fields FieldsFlag
 	var format OutputFormatFlag = OutputFormatFlag(s3fastls.OutputTSV)
 
 	params := &s3fastls.S3FastLSParams{}
+	var region string
 	flag.StringVar(&params.Bucket, "bucket", "", "The name of the S3 bucket to list")
+	flag.StringVar(&region, "region", "", "The AWS region of the S3 bucket (required)")
 	flag.StringVar(&params.Prefix, "prefix", "", "Prefix to start listing from (default: root)")
 	flag.Var(&fields, "fields", "Comma-separated list of S3 object fields to print (Key,Size,LastModified,ETag,StorageClass)")
 	flag.Var(&format, "output-format", "Output format: tsv (default)")
@@ -97,6 +99,9 @@ func parseFlags() *s3fastls.S3FastLSParams {
 	if params.Bucket == "" {
 		log.Fatal("bucket parameter is required")
 	}
+	if region == "" {
+		log.Fatal("region parameter is required")
+	}
 
 	params.OutputFields = []s3fastls.Field(fields)
 	if len(params.OutputFields) == 0 {
@@ -104,13 +109,13 @@ func parseFlags() *s3fastls.S3FastLSParams {
 	}
 	params.OutputFormat = s3fastls.OutputFormat(format)
 
-	return params
+	return params, region
 }
 
 func main() {
-	params := parseFlags()
+	params, region := parseFlags()
 
-	awsCfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion("us-east-1"))
+	awsCfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion(region))
 	if err != nil {
 		log.Fatalf("failed to load AWS configuration: %v", err)
 	}
