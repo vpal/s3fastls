@@ -81,6 +81,7 @@ func parseOutputFormat(s string) (s3fastls.OutputFormat, error) {
 }
 
 func parseFlags() (params *s3fastls.S3FastLSParams, region string, endpoint string) {
+	params = new(s3fastls.S3FastLSParams)
 	var fields FieldsFlag
 	var format OutputFormatFlag = OutputFormatFlag(s3fastls.OutputTSV)
 
