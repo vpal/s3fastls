@@ -98,24 +98,24 @@ func MakeS3Client(cfg aws.Config, endpoint string, retryConfig RetryConfig) *s3.
 func (s *s3FastLS) processPages() {
 	defer s.processPagesWg.Done()
 	for objs := range s.pageContentCh {
-		var pageOutFields [][]string
-		for _, obj := range objs {
-			var outFields []string
-			for _, field := range s.outputFields {
+		pageOutFields := make([][]string, len(objs)) // Preallocate slice with fixed size
+		for i, obj := range objs {
+			outFields := make([]string, len(s.outputFields)) // Keep slice for fields
+			for j, field := range s.outputFields {
 				switch field {
 				case FieldKey:
-					outFields = append(outFields, aws.ToString(obj.Key))
+					outFields[j] = aws.ToString(obj.Key)
 				case FieldSize:
-					outFields = append(outFields, fmt.Sprintf("%d", obj.Size))
+					outFields[j] = fmt.Sprintf("%d", aws.ToInt64(obj.Size))
 				case FieldLastModified:
-					outFields = append(outFields, obj.LastModified.Format(time.RFC3339))
+					outFields[j] = aws.ToTime(obj.LastModified).Format(time.RFC3339)
 				case FieldETag:
-					outFields = append(outFields, aws.ToString(obj.ETag))
+					outFields[j] = aws.ToString(obj.ETag)
 				case FieldStorageClass:
-					outFields = append(outFields, string(obj.StorageClass))
+					outFields[j] = string(obj.StorageClass)
 				}
 			}
-			pageOutFields = append(pageOutFields, outFields)
+			pageOutFields[i] = outFields // Use index to write directly
 		}
 		s.outputWriterCh <- pageOutFields
 	}
