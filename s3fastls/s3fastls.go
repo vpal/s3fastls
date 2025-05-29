@@ -56,7 +56,7 @@ type s3FastLS struct {
 	listPrefixWorkers   int
 	processPagesWorkers int
 	pageContentCh       chan []types.Object
-	outputWriterCh      chan []string
+	outputWriterCh      chan [][]string // Updated to accept [][]string for entire page output
 	listPrefixSem       chan struct{}
 	listPrefixWg        *sync.WaitGroup
 	processPagesWg      *sync.WaitGroup
@@ -98,6 +98,7 @@ func MakeS3Client(cfg aws.Config, endpoint string, retryConfig RetryConfig) *s3.
 func (s *s3FastLS) processPages() {
 	defer s.processPagesWg.Done()
 	for objs := range s.pageContentCh {
+		var pageOutFields [][]string
 		for _, obj := range objs {
 			var outFields []string
 			for _, field := range s.outputFields {
@@ -114,16 +115,19 @@ func (s *s3FastLS) processPages() {
 					outFields = append(outFields, string(obj.StorageClass))
 				}
 			}
-			s.outputWriterCh <- outFields
+			pageOutFields = append(pageOutFields, outFields)
 		}
+		s.outputWriterCh <- pageOutFields
 	}
 }
 
 func (s *s3FastLS) writeOutput() {
 	defer s.writeOutputWg.Done()
-	for outFields := range s.outputWriterCh {
-		if _, err := fmt.Fprintln(s.outputWriter, s.formatter(outFields)); err != nil {
-			log.Fatalf("failed to write output: %v", err)
+	for pageOutFields := range s.outputWriterCh {
+		for _, outFields := range pageOutFields {
+			if _, err := fmt.Fprintln(s.outputWriter, s.formatter(outFields)); err != nil {
+				log.Fatalf("failed to write output: %v", err)
+			}
 		}
 	}
 }
@@ -212,7 +216,7 @@ func List(client *s3.Client, params S3FastLSParams) {
 		listPrefixWorkers:   params.Workers,
 		processPagesWorkers: 64,
 		pageContentCh:       make(chan []types.Object, 4096),
-		outputWriterCh:      make(chan []string, 4096),
+		outputWriterCh:      make(chan [][]string, 4096),
 		listPrefixSem:       make(chan struct{}, params.Workers),
 		listPrefixWg:        &sync.WaitGroup{},
 		processPagesWg:      &sync.WaitGroup{},
