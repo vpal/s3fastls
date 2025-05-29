@@ -98,9 +98,9 @@ func MakeS3Client(cfg aws.Config, endpoint string, retryConfig RetryConfig) *s3.
 func (s *s3FastLS) processPages() {
 	defer s.processPagesWg.Done()
 	for objs := range s.pageContentCh {
-		pageOutFields := make([][]string, len(objs)) // Preallocate slice with fixed size
+		pageOutFields := make([][]string, len(objs))
 		for i, obj := range objs {
-			outFields := make([]string, len(s.outputFields)) // Keep slice for fields
+			outFields := make([]string, len(s.outputFields))
 			for j, field := range s.outputFields {
 				switch field {
 				case FieldKey:
