@@ -204,6 +204,11 @@ func List(client *s3.Client, params S3FastLSParams) {
 		defer file.Close()
 	}
 
+	processPagesWorkers := 64 // Default value
+	if params.Workers <= 64 {
+		processPagesWorkers = params.Workers
+	}
+
 	s3ls := &s3FastLS{
 		client:              client,
 		bucket:              params.Bucket,
@@ -214,7 +219,7 @@ func List(client *s3.Client, params S3FastLSParams) {
 		formatter:           formatters[params.OutputFormat],
 		debug:               params.Debug,
 		listPrefixWorkers:   params.Workers,
-		processPagesWorkers: 64,
+		processPagesWorkers: processPagesWorkers,
 		pageContentCh:       make(chan []types.Object, 4096),
 		outputWriterCh:      make(chan [][]string, 4096),
 		listPrefixSem:       make(chan struct{}, params.Workers),
@@ -222,5 +227,6 @@ func List(client *s3.Client, params S3FastLSParams) {
 		processPagesWg:      &sync.WaitGroup{},
 		writeOutputWg:       &sync.WaitGroup{},
 	}
+
 	s3ls.list()
 }
