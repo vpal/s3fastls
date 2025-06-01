@@ -196,10 +196,7 @@ func List(client *s3.Client, params S3FastLSParams) {
 		defer file.Close()
 	}
 
-	processPagesWorkers := runtime.NumCPU() * 2
-	if params.Workers < processPagesWorkers {
-		processPagesWorkers = params.Workers
-	}
+	processPagesWorkers := min(params.Workers, runtime.NumCPU())
 
 	s3ls := &s3FastLS{
 		client:              client,
