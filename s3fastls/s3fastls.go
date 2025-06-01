@@ -43,20 +43,18 @@ var formatters = map[OutputFormat]OutputFormatter{
 
 // --- s3FastLS struct and methods ---
 type s3FastLS struct {
-	client       *s3.Client
-	bucket       string
-	prefix       string
-	outputFields []Field
-	outputFormat OutputFormat
-	outputWriter io.Writer
-	formatter    OutputFormatter
-	workers      int
-	debug        bool
-	// concurrency and channels
+	client              *s3.Client
+	bucket              string
+	prefix              string
+	outputFields        []Field
+	outputFormat        OutputFormat
+	outputWriter        io.Writer
+	formatter           OutputFormatter
+	debug               bool
 	listPrefixWorkers   int
 	processPagesWorkers int
 	pageContentCh       chan []types.Object
-	outputWriterCh      chan [][]string // Updated to accept [][]string for entire page output
+	outputWriterCh      chan [][]string
 	listPrefixSem       chan struct{}
 	listPrefixWg        *sync.WaitGroup
 	processPagesWg      *sync.WaitGroup
