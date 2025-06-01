@@ -16,7 +16,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 )
 
-// --- Types for fields and output formats ---
 type Field string
 
 const (
@@ -33,15 +32,12 @@ const (
 	OutputTSV OutputFormat = "tsv"
 )
 
-// OutputFormatter is a function that formats a slice of strings for output
 type OutputFormatter func([]string) string
 
-// Format functions for different output formats
 var formatters = map[OutputFormat]OutputFormatter{
 	OutputTSV: func(fields []string) string { return strings.Join(fields, "\t") },
 }
 
-// --- s3FastLS struct and methods ---
 type s3FastLS struct {
 	client              *s3.Client
 	bucket              string
@@ -61,14 +57,12 @@ type s3FastLS struct {
 	writeOutputWg       *sync.WaitGroup
 }
 
-// RetryConfig holds configuration for the S3 client retry behavior
 type RetryConfig struct {
 	MaxAttempts int
 	MaxBackoff  time.Duration
 	MinBackoff  time.Duration
 }
 
-// DefaultRetryConfig returns a RetryConfig with reasonable defaults
 func DefaultRetryConfig() RetryConfig {
 	return RetryConfig{
 		MaxAttempts: 10,
@@ -113,7 +107,7 @@ func (s *s3FastLS) processPages() {
 					outFields[j] = string(obj.StorageClass)
 				}
 			}
-			pageOutFields[i] = outFields // Use index to write directly
+			pageOutFields[i] = outFields
 		}
 		s.outputWriterCh <- pageOutFields
 	}
@@ -132,8 +126,8 @@ func (s *s3FastLS) writeOutput() {
 
 func (s *s3FastLS) listPrefix(prefix string) {
 	defer s.listPrefixWg.Done()
-	s.listPrefixSem <- struct{}{}        // acquire
-	defer func() { <-s.listPrefixSem }() // release
+	s.listPrefixSem <- struct{}{}
+	defer func() { <-s.listPrefixSem }()
 	if s.debug {
 		log.Printf("Listing prefix: %q", prefix)
 	}
@@ -178,7 +172,6 @@ func (s *s3FastLS) list() {
 	s.writeOutputWg.Wait()
 }
 
-// S3FastLSParams holds configuration for s3fastls
 type S3FastLSParams struct {
 	Bucket       string
 	Prefix       string
@@ -202,7 +195,7 @@ func List(client *s3.Client, params S3FastLSParams) {
 		defer file.Close()
 	}
 
-	processPagesWorkers := 64 // Default value
+	processPagesWorkers := 64
 	if params.Workers <= 64 {
 		processPagesWorkers = params.Workers
 	}
