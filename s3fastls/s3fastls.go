@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -195,8 +196,8 @@ func List(client *s3.Client, params S3FastLSParams) {
 		defer file.Close()
 	}
 
-	processPagesWorkers := 64
-	if params.Workers <= 64 {
+	processPagesWorkers := runtime.NumCPU() * 2
+	if params.Workers < processPagesWorkers {
 		processPagesWorkers = params.Workers
 	}
 
