@@ -29,6 +29,7 @@ s3fastls --bucket <bucket> --region <region> [options]
 - `--debug`: Print debug information about current prefixes.
 
 ### Example
+
 ```
 s3fastls --bucket my-bucket --region us-east-1 --fields Key,Size,LastModified --output results.tsv --workers 16
 ```
@@ -40,7 +41,11 @@ s3fastls --bucket my-bucket --region us-east-1 --fields Key,Size,LastModified --
 import "github.com/vpal/s3fastls/s3fastls"
 
 // Create AWS config and client
-cfg, _ := config.LoadDefaultConfig(context.TODO(), config.WithRegion("us-east-1"))
+ctx := context.Background()
+cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion("us-east-1"))
+if err != nil {
+    log.Fatalf("unable to load SDK config: %v", err)
+}
 
 // Configure retry behavior
 retryConfig := s3fastls.DefaultRetryConfig() // Or customize: MaxAttempts, MaxBackoff, MinBackoff
@@ -57,8 +62,10 @@ params := s3fastls.S3FastLSParams{
     Debug:        false,
 }
 
-// Run listing
-s3fastls.List(client, params)
+// Run listing with context and error handling
+if err := s3fastls.List(ctx, client, params); err != nil {
+    log.Fatalf("listing failed: %v", err)
+}
 ```
 
 ### Installation

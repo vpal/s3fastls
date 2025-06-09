@@ -5,8 +5,11 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
+	"os/signal"
 	"runtime"
 	"strings"
+	"syscall"
 
 	"github.com/vpal/s3fastls/s3fastls"
 
@@ -115,15 +118,26 @@ func parseFlags() (params *s3fastls.S3FastLSParams, region string, endpoint stri
 func main() {
 	params, region, endpoint := parseFlags()
 
-	awsCfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion(region))
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Handle signals
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigChan
+		cancel()
+	}()
+
+	awsCfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	if err != nil {
 		log.Fatalf("failed to load AWS configuration: %v", err)
 	}
 
 	retryConfig := s3fastls.DefaultRetryConfig()
 	client := s3fastls.MakeS3Client(awsCfg, endpoint, retryConfig)
-	s3fastls.List(
-		client,
-		*params,
-	)
+
+	if err := s3fastls.List(ctx, client, *params); err != nil {
+		log.Fatalf("listing failed: %v", err)
+	}
 }
