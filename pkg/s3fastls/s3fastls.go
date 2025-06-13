@@ -41,7 +41,7 @@ var formatters = map[OutputFormat]OutputFormatter{
 
 type s3FastLS struct {
 	ctx                 context.Context
-	client              *s3.Client
+	client              s3.ListObjectsV2APIClient
 	bucket              string
 	prefix              string
 	outputFields        []Field
@@ -225,7 +225,7 @@ type S3FastLSParams struct {
 }
 
 // List lists S3 objects with the given parameters and writes output to writer.
-func List(ctx context.Context, params S3FastLSParams, client *s3.Client, writer io.Writer) error {
+func List(ctx context.Context, params S3FastLSParams, client s3.ListObjectsV2APIClient, writer io.Writer) error {
 	if writer == nil {
 		return fmt.Errorf("output writer must not be nil")
 	}
