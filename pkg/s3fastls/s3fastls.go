@@ -9,6 +9,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -19,22 +20,21 @@ import (
 )
 
 type Field string
+type OutputFormat string
+type OutputFormatter func([]string) string
 
 const (
+	// bufferSize is the size of channel buffer per worker
+	bufferSize = 1024
+
 	FieldKey          Field = "Key"
 	FieldSize         Field = "Size"
 	FieldLastModified Field = "LastModified"
 	FieldETag         Field = "ETag"
 	FieldStorageClass Field = "StorageClass"
-)
 
-type OutputFormat string
-
-const (
 	OutputTSV OutputFormat = "tsv"
 )
-
-type OutputFormatter func([]string) string
 
 var formatters = map[OutputFormat]OutputFormatter{
 	OutputTSV: func(fields []string) string { return strings.Join(fields, "\t") },
@@ -169,35 +169,50 @@ func (s *s3FastLS) listPrefix(prefix string) error {
 
 func (s *s3FastLS) list() error {
 	ctx := s.ctx
-	s.writeOutputEg, _ = errgroup.WithContext(ctx)
-	s.writeOutputEg.Go(s.writeOutput)
+	errCh := make(chan error, 3)
+	wg := &sync.WaitGroup{}
 
-	s.processPagesEg, _ = errgroup.WithContext(ctx)
-	for i := 0; i < s.processPagesWorkers; i++ {
-		s.processPagesEg.Go(s.processPages)
-	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		defer close(s.pageContentCh)
+		s.listPrefixEg, _ = errgroup.WithContext(ctx)
+		s.listPrefixEg.Go(func() error { return s.listPrefix(s.prefix) })
+		if err := s.listPrefixEg.Wait(); err != nil && !errors.Is(err, context.Canceled) {
+			errCh <- fmt.Errorf("s3fastls.listPrefix: %w", err)
+		}
+	}()
 
-	s.listPrefixEg, _ = errgroup.WithContext(ctx)
-	s.listPrefixEg.Go(func() error {
-		return s.listPrefix(s.prefix)
-	})
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		defer close(s.outputWriterCh)
+		s.writeOutputEg, _ = errgroup.WithContext(ctx)
+		s.writeOutputEg.Go(s.writeOutput)
+		if err := s.writeOutputEg.Wait(); err != nil && !errors.Is(err, context.Canceled) {
+			errCh <- fmt.Errorf("s3fastls.writeOutput: %w", err)
+		}
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		s.processPagesEg, _ = errgroup.WithContext(ctx)
+		for i := 0; i < s.processPagesWorkers; i++ {
+			s.processPagesEg.Go(s.processPages)
+		}
+		if err := s.processPagesEg.Wait(); err != nil && !errors.Is(err, context.Canceled) {
+			errCh <- fmt.Errorf("s3fastls.processPages: %w", err)
+		}
+	}()
+
+	wg.Wait()
+	close(errCh)
 
 	var errs error
-
-	if err := s.listPrefixEg.Wait(); err != nil && !errors.Is(err, context.Canceled) {
-		errs = errors.Join(errs, fmt.Errorf("s3fastls.listPrefix: %w", err))
+	for err := range errCh {
+		errs = errors.Join(errs, err)
 	}
-	close(s.pageContentCh)
-
-	if err := s.processPagesEg.Wait(); err != nil && !errors.Is(err, context.Canceled) {
-		errs = errors.Join(errs, fmt.Errorf("s3fastls.processPages: %w", err))
-	}
-	close(s.outputWriterCh)
-
-	if err := s.writeOutputEg.Wait(); err != nil && !errors.Is(err, context.Canceled) {
-		errs = errors.Join(errs, fmt.Errorf("s3fastls.writeOutput: %w", err))
-	}
-
 	return errs
 }
 
@@ -238,8 +253,8 @@ func List(ctx context.Context, client *s3.Client, params S3FastLSParams) error {
 		debug:               params.Debug,
 		listPrefixWorkers:   params.Workers,
 		processPagesWorkers: processPagesWorkers,
-		pageContentCh:       make(chan []types.Object, 4096),
-		outputWriterCh:      make(chan [][]string, 4096),
+		pageContentCh:       make(chan []types.Object, params.Workers*bufferSize),
+		outputWriterCh:      make(chan [][]string, processPagesWorkers*bufferSize),
 		listPrefixSem:       make(chan struct{}, params.Workers),
 	}
 
