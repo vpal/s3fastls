@@ -2,9 +2,9 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/signal"
@@ -84,7 +84,7 @@ func parseOutputFormat(s string) (s3fastls.OutputFormat, error) {
 	}
 }
 
-func parseFlags() (params *s3fastls.S3FastLSParams, region string, endpoint string) {
+func parseFlags() (params *s3fastls.S3FastLSParams, region string, endpoint string, outputFile string) {
 	params = new(s3fastls.S3FastLSParams)
 	var fields FieldsFlag
 	var format OutputFormatFlag = OutputFormatFlag(s3fastls.OutputTSV)
@@ -95,9 +95,9 @@ func parseFlags() (params *s3fastls.S3FastLSParams, region string, endpoint stri
 	flag.StringVar(&params.Prefix, "prefix", "", "Prefix to start listing from (default: root)")
 	flag.Var(&fields, "fields", "Comma-separated list of S3 object fields to print (Key,Size,LastModified,ETag,StorageClass)")
 	flag.Var(&format, "output-format", "Output format: tsv (default)")
-	flag.StringVar(&params.OutputFile, "output", "", "Output file (default: stdout)")
 	flag.IntVar(&params.Workers, "workers", runtime.NumCPU(), "Number of concurrent S3 listing workers")
 	flag.BoolVar(&params.Debug, "debug", false, "Print debug information (current prefix)")
+	flag.StringVar(&outputFile, "output", "", "Output file (default: stdout)")
 	flag.Parse()
 
 	if params.Bucket == "" {
@@ -113,11 +113,11 @@ func parseFlags() (params *s3fastls.S3FastLSParams, region string, endpoint stri
 	}
 	params.OutputFormat = s3fastls.OutputFormat(format)
 
-	return params, region, endpoint
+	return params, region, endpoint, outputFile
 }
 
 func main() {
-	params, region, endpoint := parseFlags()
+	params, region, endpoint, outputFile := parseFlags()
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -138,11 +138,19 @@ func main() {
 	retryConfig := s3fastls.DefaultRetryConfig()
 	client := s3fastls.MakeS3Client(awsCfg, endpoint, retryConfig)
 
-	if err := s3fastls.List(ctx, client, *params); err != nil {
-		if errors.Is(err, context.Canceled) {
-			log.Printf("operation cancelled by user")
-			os.Exit(1)
+	var writer io.Writer
+	if outputFile == "" {
+		writer = os.Stdout
+	} else {
+		file, err := os.Create(outputFile)
+		if err != nil {
+			log.Fatalf("failed to create output file: %v", err)
 		}
+		defer file.Close()
+		writer = file
+	}
+
+	if err := s3fastls.List(ctx, *params, client, writer); err != nil {
 		log.Fatalf("listing failed: %v", err)
 	}
 }

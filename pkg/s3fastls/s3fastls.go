@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"os"
 	"runtime"
 	"strings"
 	"sync"
@@ -221,22 +220,14 @@ type S3FastLSParams struct {
 	Prefix       string
 	OutputFields []Field
 	OutputFormat OutputFormat
-	OutputFile   string
 	Workers      int
 	Debug        bool
 }
 
-func List(ctx context.Context, client *s3.Client, params S3FastLSParams) error {
-	var writer io.Writer
-	if params.OutputFile == "" {
-		writer = os.Stdout
-	} else {
-		file, err := os.Create(params.OutputFile)
-		if err != nil {
-			return fmt.Errorf("failed to create output file: %w", err)
-		}
-		writer = file
-		defer file.Close()
+// List lists S3 objects with the given parameters and writes output to writer.
+func List(ctx context.Context, params S3FastLSParams, client *s3.Client, writer io.Writer) error {
+	if writer == nil {
+		return fmt.Errorf("output writer must not be nil")
 	}
 
 	processPagesWorkers := min(params.Workers, runtime.NumCPU())
