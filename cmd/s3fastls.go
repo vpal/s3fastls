@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -11,7 +12,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/vpal/s3fastls/s3fastls"
+	"github.com/vpal/s3fastls/pkg/s3fastls"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 )
@@ -119,13 +120,13 @@ func main() {
 	params, region, endpoint := parseFlags()
 
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	// Handle signals
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
-		<-sigChan
+		sig := <-sigChan
+		log.Printf("received signal %v, shutting down...", sig)
 		cancel()
 	}()
 
@@ -138,6 +139,10 @@ func main() {
 	client := s3fastls.MakeS3Client(awsCfg, endpoint, retryConfig)
 
 	if err := s3fastls.List(ctx, client, *params); err != nil {
+		if errors.Is(err, context.Canceled) {
+			log.Printf("operation cancelled by user")
+			os.Exit(1)
+		}
 		log.Fatalf("listing failed: %v", err)
 	}
 }
