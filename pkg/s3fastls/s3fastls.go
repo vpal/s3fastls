@@ -39,6 +39,10 @@ var formatters = map[OutputFormat]OutputFormatter{
 	OutputTSV: func(fields []string) string { return strings.Join(fields, "\t") },
 }
 
+type S3ListObjectsV2API interface {
+	ListObjectsV2(ctx context.Context, params *s3.ListObjectsV2Input, optFns ...func(*s3.Options)) (*s3.ListObjectsV2Output, error)
+}
+
 type s3FastLS struct {
 	ctx                 context.Context
 	client              s3.ListObjectsV2APIClient
@@ -225,7 +229,7 @@ type S3FastLSParams struct {
 }
 
 // List lists S3 objects with the given parameters and writes output to writer.
-func List(ctx context.Context, params S3FastLSParams, client s3.ListObjectsV2APIClient, writer io.Writer) error {
+func List(ctx context.Context, params S3FastLSParams, client S3ListObjectsV2API, writer io.Writer) error {
 	if writer == nil {
 		return fmt.Errorf("output writer must not be nil")
 	}
