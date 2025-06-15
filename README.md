@@ -11,6 +11,8 @@ s3fastls is a command-line tool and Go library for recursively listing Amazon S3
 - **File output**: Write results to a file instead of stdout using the `--output` flag.
 - **Configurable retry behavior**: Control retry attempts and backoff durations for S3 operations.
 - **Library and CLI**: Use as a Go library or as a standalone command-line tool.
+- **Robust error handling**: All errors from S3, context cancellation, and output writers are propagated and joined as needed. Context errors are detected and surfaced as such.
+- **Testability**: The library is designed for easy testing with mocks and fakes, and includes testing for paging, context cancellation, and error propagation.
 
 ## Usage as a Command-Line Tool
 ```
@@ -55,23 +57,24 @@ client := s3fastls.MakeS3Client(cfg, "", retryConfig)
 params := s3fastls.S3FastLSParams{
     Bucket:       "my-bucket",
     Prefix:       "", // or any prefix
-    Fields:       []s3fastls.Field{s3fastls.FieldKey, s3fastls.FieldSize},
+    OutputFields: []s3fastls.Field{s3fastls.FieldKey, s3fastls.FieldSize},
     OutputFormat: s3fastls.OutputTSV,
-    OutputFile:   "output.tsv", // or "" for stdout
     Workers:      16,
     Debug:        false,
 }
 
 // Run listing with context and error handling
-if err := s3fastls.List(ctx, client, params); err != nil {
+var buf bytes.Buffer
+if err := s3fastls.List(ctx, params, client, &buf); err != nil {
     log.Fatalf("listing failed: %v", err)
 }
 ```
 
-### Installation
-```
-go get github.com/vpal/s3fastls
-```
+### Error Handling and Context Support
+- The library is context-aware and propagates errors from S3, context cancellation, and output writers in a robust way.
+
+### Testability
+- The library is designed to be easy to test and mock in your own projects.
 
 ### Available Fields
 ```go
@@ -96,10 +99,15 @@ To build the command-line tool:
 ```
 go build -o s3fastls ./
 ```
+To run tests (including integration and error propagation tests):
+```
+go test -v ./...
+```
 
 ## Important Notes
 - **Too many workers can cause S3 to return HTTP 503 Slow Down errors.** Tune the `--workers` parameter according to your use case and S3 limits.
 - This tool is designed for speed and concurrency, but aggressive settings may impact S3 performance or cost.
+- All error handling, context cancellation, and channel closing is robust and tested.
 - Use this tool at your own risk. The authors are not responsible for any data loss, API throttling, or unexpected costs incurred by its use.
 
 ## License
