@@ -4,11 +4,15 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log"
+	"os"
+	"os/signal"
 	"runtime"
 	"strings"
+	"syscall"
 
-	"github.com/vpal/s3fastls/s3fastls"
+	"github.com/vpal/s3fastls/pkg/s3fastls"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 )
@@ -39,7 +43,7 @@ func (f *FieldsFlag) Set(value string) error {
 }
 
 // OutputFormatFlag implements flag.Value interface for parsing output format
-type OutputFormatFlag s3fastls.OutputFormat
+type OutputFormatFlag s3fastls.Format
 
 func (f *OutputFormatFlag) String() string {
 	return string(*f)
@@ -71,7 +75,7 @@ func parseField(s string) (s3fastls.Field, error) {
 	}
 }
 
-func parseOutputFormat(s string) (s3fastls.OutputFormat, error) {
+func parseOutputFormat(s string) (s3fastls.Format, error) {
 	switch s {
 	case string(s3fastls.OutputTSV):
 		return s3fastls.OutputTSV, nil
@@ -80,7 +84,7 @@ func parseOutputFormat(s string) (s3fastls.OutputFormat, error) {
 	}
 }
 
-func parseFlags() (params *s3fastls.S3FastLSParams, region string, endpoint string) {
+func parseFlags() (params *s3fastls.S3FastLSParams, region string, endpoint string, outputFile string) {
 	params = new(s3fastls.S3FastLSParams)
 	var fields FieldsFlag
 	var format OutputFormatFlag = OutputFormatFlag(s3fastls.OutputTSV)
@@ -91,9 +95,9 @@ func parseFlags() (params *s3fastls.S3FastLSParams, region string, endpoint stri
 	flag.StringVar(&params.Prefix, "prefix", "", "Prefix to start listing from (default: root)")
 	flag.Var(&fields, "fields", "Comma-separated list of S3 object fields to print (Key,Size,LastModified,ETag,StorageClass)")
 	flag.Var(&format, "output-format", "Output format: tsv (default)")
-	flag.StringVar(&params.OutputFile, "output", "", "Output file (default: stdout)")
 	flag.IntVar(&params.Workers, "workers", runtime.NumCPU(), "Number of concurrent S3 listing workers")
 	flag.BoolVar(&params.Debug, "debug", false, "Print debug information (current prefix)")
+	flag.StringVar(&outputFile, "output", "", "Output file (default: stdout)")
 	flag.Parse()
 
 	if params.Bucket == "" {
@@ -107,23 +111,46 @@ func parseFlags() (params *s3fastls.S3FastLSParams, region string, endpoint stri
 	if len(params.OutputFields) == 0 {
 		params.OutputFields = []s3fastls.Field{s3fastls.FieldKey}
 	}
-	params.OutputFormat = s3fastls.OutputFormat(format)
+	params.OutputFormat = s3fastls.Format(format)
 
-	return params, region, endpoint
+	return params, region, endpoint, outputFile
 }
 
 func main() {
-	params, region, endpoint := parseFlags()
+	params, region, endpoint, outputFile := parseFlags()
 
-	awsCfg, err := config.LoadDefaultConfig(context.TODO(), config.WithRegion(region))
+	ctx, cancel := context.WithCancel(context.Background())
+
+	// Handle signals
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		sig := <-sigChan
+		log.Printf("received signal %v, shutting down...", sig)
+		cancel()
+	}()
+
+	awsCfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 	if err != nil {
 		log.Fatalf("failed to load AWS configuration: %v", err)
 	}
 
 	retryConfig := s3fastls.DefaultRetryConfig()
 	client := s3fastls.MakeS3Client(awsCfg, endpoint, retryConfig)
-	s3fastls.List(
-		client,
-		*params,
-	)
+
+	var writer io.Writer
+	if outputFile == "" {
+		writer = os.Stdout
+	} else {
+		file, err := os.Create(outputFile)
+		if err != nil {
+			log.Fatalf("failed to create output file: %v", err)
+		}
+		defer file.Close()
+		writer = file
+	}
+
+	if err := s3fastls.List(ctx, *params, client, writer); err != nil {
+		log.Fatalf("listing failed: %v", err)
+	}
 }
