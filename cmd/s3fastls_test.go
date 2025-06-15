@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	"github.com/vpal/s3fastls/s3fastls"
+	"github.com/vpal/s3fastls/pkg/s3fastls"
 )
 
 func TestParseField(t *testing.T) {

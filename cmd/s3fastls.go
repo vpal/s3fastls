@@ -43,7 +43,7 @@ func (f *FieldsFlag) Set(value string) error {
 }
 
 // OutputFormatFlag implements flag.Value interface for parsing output format
-type OutputFormatFlag s3fastls.OutputFormat
+type OutputFormatFlag s3fastls.Format
 
 func (f *OutputFormatFlag) String() string {
 	return string(*f)
@@ -75,7 +75,7 @@ func parseField(s string) (s3fastls.Field, error) {
 	}
 }
 
-func parseOutputFormat(s string) (s3fastls.OutputFormat, error) {
+func parseOutputFormat(s string) (s3fastls.Format, error) {
 	switch s {
 	case string(s3fastls.OutputTSV):
 		return s3fastls.OutputTSV, nil
@@ -111,7 +111,7 @@ func parseFlags() (params *s3fastls.S3FastLSParams, region string, endpoint stri
 	if len(params.OutputFields) == 0 {
 		params.OutputFields = []s3fastls.Field{s3fastls.FieldKey}
 	}
-	params.OutputFormat = s3fastls.OutputFormat(format)
+	params.OutputFormat = s3fastls.Format(format)
 
 	return params, region, endpoint, outputFile
 }

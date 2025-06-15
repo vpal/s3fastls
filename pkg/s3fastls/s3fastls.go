@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"runtime"
 	"strings"
 	"sync"
@@ -19,8 +18,8 @@ import (
 )
 
 type Field string
-type OutputFormat string
-type OutputFormatter func([]string) string
+type Format string
+type Formatter func([]string) string
 
 const (
 	// bufferSize is the size of channel buffer per worker
@@ -32,10 +31,10 @@ const (
 	FieldETag         Field = "ETag"
 	FieldStorageClass Field = "StorageClass"
 
-	OutputTSV OutputFormat = "tsv"
+	OutputTSV Format = "tsv"
 )
 
-var formatters = map[OutputFormat]OutputFormatter{
+var formatters = map[Format]Formatter{
 	OutputTSV: func(fields []string) string { return strings.Join(fields, "\t") },
 }
 
@@ -45,22 +44,21 @@ type S3ListObjectsV2API interface {
 
 type s3FastLS struct {
 	ctx                 context.Context
-	client              s3.ListObjectsV2APIClient
+	cancel              context.CancelFunc
+	client              S3ListObjectsV2API
 	bucket              string
 	prefix              string
-	outputFields        []Field
-	outputFormat        OutputFormat
-	outputWriter        io.Writer
-	formatter           OutputFormatter
+	fields              []Field
+	format              Format
+	writer              io.Writer
+	formatter           Formatter
 	debug               bool
 	listPrefixWorkers   int
 	processPagesWorkers int
-	pageContentCh       chan []types.Object
-	outputWriterCh      chan [][]string
-	listPrefixSem       chan struct{}
-	listPrefixEg        *errgroup.Group
-	processPagesEg      *errgroup.Group
-	writeOutputEg       *errgroup.Group
+	objsCh              chan []types.Object
+	recordsCh           chan [][]string
+	sem                 chan struct{}
+	eg                  *errgroup.Group
 }
 
 type RetryConfig struct {
@@ -93,44 +91,86 @@ func MakeS3Client(cfg aws.Config, endpoint string, retryConfig RetryConfig) *s3.
 	})
 }
 
-func (s *s3FastLS) processPages() error {
-	ctx := s.ctx
-	for objs := range s.pageContentCh {
-		if err := ctx.Err(); err != nil {
-			return err
+func (s *s3FastLS) listPrefix(prefix string) error {
+	eg := s.eg
+	s.sem <- struct{}{}
+	defer func() { <-s.sem }()
+	params := &s3.ListObjectsV2Input{
+		Bucket:    aws.String(s.bucket),
+		Prefix:    aws.String(prefix),
+		Delimiter: aws.String("/"),
+	}
+	if s.ctx.Err() != nil {
+		return s.ctx.Err()
+	}
+	paginator := s3.NewListObjectsV2Paginator(s.client, params)
+	for paginator.HasMorePages() {
+		if s.ctx.Err() != nil {
+			return s.ctx.Err()
 		}
-		pageOutFields := make([][]string, len(objs))
+		page, err := paginator.NextPage(s.ctx)
+		if err != nil {
+			s.cancel()
+			return fmt.Errorf("failed to list objects for prefix %q: %w", prefix, err)
+		}
+		if len(page.Contents) > 0 {
+			select {
+			case s.objsCh <- page.Contents:
+			case <-s.ctx.Done():
+				return s.ctx.Err()
+			}
+		}
+		for _, cp := range page.CommonPrefixes {
+			if s.ctx.Err() != nil {
+				return s.ctx.Err()
+			}
+			eg.Go(func() error { return s.listPrefix(*cp.Prefix) })
+		}
+	}
+	return nil
+}
+
+func (s *s3FastLS) processPages() error {
+	for objs := range s.objsCh {
+		if s.ctx.Err() != nil {
+			return s.ctx.Err()
+		}
+		records := make([][]string, len(objs))
 		for i, obj := range objs {
-			outFields := make([]string, len(s.outputFields))
-			for j, field := range s.outputFields {
+			record := make([]string, len(s.fields))
+			for j, field := range s.fields {
 				switch field {
 				case FieldKey:
-					outFields[j] = aws.ToString(obj.Key)
+					record[j] = aws.ToString(obj.Key)
 				case FieldSize:
-					outFields[j] = fmt.Sprintf("%d", aws.ToInt64(obj.Size))
+					record[j] = fmt.Sprintf("%d", aws.ToInt64(obj.Size))
 				case FieldLastModified:
-					outFields[j] = aws.ToTime(obj.LastModified).Format(time.RFC3339)
+					record[j] = aws.ToTime(obj.LastModified).Format(time.RFC3339)
 				case FieldETag:
-					outFields[j] = aws.ToString(obj.ETag)
+					record[j] = aws.ToString(obj.ETag)
 				case FieldStorageClass:
-					outFields[j] = string(obj.StorageClass)
+					record[j] = string(obj.StorageClass)
 				}
 			}
-			pageOutFields[i] = outFields
+			records[i] = record
 		}
-		s.outputWriterCh <- pageOutFields
+		select {
+		case s.recordsCh <- records:
+		case <-s.ctx.Done():
+			return s.ctx.Err()
+		}
 	}
 	return nil
 }
 
 func (s *s3FastLS) writeOutput() error {
-	ctx := s.ctx
-	for pageOutFields := range s.outputWriterCh {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		for _, outFields := range pageOutFields {
-			if _, err := fmt.Fprintln(s.outputWriter, s.formatter(outFields)); err != nil {
+	for records := range s.recordsCh {
+		for _, record := range records {
+			if s.ctx.Err() != nil {
+				return s.ctx.Err()
+			}
+			if _, err := fmt.Fprintln(s.writer, s.formatter(record)); err != nil {
+				s.cancel()
 				return fmt.Errorf("failed to write output: %w", err)
 			}
 		}
@@ -138,102 +178,83 @@ func (s *s3FastLS) writeOutput() error {
 	return nil
 }
 
-func (s *s3FastLS) listPrefix(prefix string) error {
-	ctx := s.ctx
-	eg := s.listPrefixEg
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	s.listPrefixSem <- struct{}{}
-	defer func() { <-s.listPrefixSem }()
-	if s.debug {
-		log.Printf("Listing prefix: %q", prefix)
-	}
-	params := &s3.ListObjectsV2Input{
-		Bucket:    aws.String(s.bucket),
-		Prefix:    aws.String(prefix),
-		Delimiter: aws.String("/"),
-	}
-	paginator := s3.NewListObjectsV2Paginator(s.client, params)
-	for paginator.HasMorePages() {
-		page, err := paginator.NextPage(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to list objects for prefix %q: %w", prefix, err)
-		}
-		if len(page.Contents) > 0 {
-			s.pageContentCh <- page.Contents
-		}
-		for _, cp := range page.CommonPrefixes {
-			eg.Go(func() error { return s.listPrefix(*cp.Prefix) })
-		}
-	}
-	return nil
-}
-
-func (s *s3FastLS) list() error {
-	ctx := s.ctx
+func (s *s3FastLS) run() error {
+	s.ctx, s.cancel = context.WithCancel(s.ctx)
 	errCh := make(chan error, 3)
 	wg := &sync.WaitGroup{}
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		defer close(s.pageContentCh)
-		s.listPrefixEg, _ = errgroup.WithContext(ctx)
-		s.listPrefixEg.Go(func() error { return s.listPrefix(s.prefix) })
-		if err := s.listPrefixEg.Wait(); err != nil && !errors.Is(err, context.Canceled) {
-			errCh <- fmt.Errorf("s3fastls.listPrefix: %w", err)
-		}
+		defer close(s.objsCh)
+		s.eg = &errgroup.Group{}
+		s.eg.Go(func() error {
+			return s.listPrefix(s.prefix)
+		})
+		errCh <- s.eg.Wait()
 	}()
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		defer close(s.outputWriterCh)
-		s.writeOutputEg, _ = errgroup.WithContext(ctx)
-		s.writeOutputEg.Go(s.writeOutput)
-		if err := s.writeOutputEg.Wait(); err != nil && !errors.Is(err, context.Canceled) {
-			errCh <- fmt.Errorf("s3fastls.writeOutput: %w", err)
+		defer close(s.recordsCh)
+		eg := &errgroup.Group{}
+		for range s.processPagesWorkers {
+			eg.Go(s.processPages)
 		}
+		errCh <- eg.Wait()
 	}()
 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		s.processPagesEg, _ = errgroup.WithContext(ctx)
-		for i := 0; i < s.processPagesWorkers; i++ {
-			s.processPagesEg.Go(s.processPages)
-		}
-		if err := s.processPagesEg.Wait(); err != nil && !errors.Is(err, context.Canceled) {
-			errCh <- fmt.Errorf("s3fastls.processPages: %w", err)
-		}
+		eg := &errgroup.Group{}
+		eg.Go(s.writeOutput)
+		errCh <- eg.Wait()
 	}()
 
 	wg.Wait()
 	close(errCh)
 
-	var errs error
+	var errs []error
+	var ctxErr error
 	for err := range errCh {
-		errs = errors.Join(errs, err)
+		if err == nil {
+			continue
+		}
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			if ctxErr == nil {
+				ctxErr = err
+			}
+			continue
+		}
+		errs = append(errs, err)
 	}
-	return errs
+	switch {
+	case len(errs) > 0:
+		return errors.Join(errs...)
+	case ctxErr != nil:
+		return ctxErr
+	default:
+		return nil
+	}
 }
 
 type S3FastLSParams struct {
 	Bucket       string
 	Prefix       string
 	OutputFields []Field
-	OutputFormat OutputFormat
+	OutputFormat Format
 	Workers      int
 	Debug        bool
 }
 
-// List lists S3 objects with the given parameters and writes output to writer.
-func List(ctx context.Context, params S3FastLSParams, client S3ListObjectsV2API, writer io.Writer) error {
-	if writer == nil {
-		return fmt.Errorf("output writer must not be nil")
-	}
-
+func List(
+	ctx context.Context,
+	params S3FastLSParams,
+	client S3ListObjectsV2API,
+	writer io.Writer,
+) error {
 	processPagesWorkers := min(params.Workers, runtime.NumCPU())
 
 	s3ls := &s3FastLS{
@@ -241,17 +262,17 @@ func List(ctx context.Context, params S3FastLSParams, client S3ListObjectsV2API,
 		client:              client,
 		bucket:              params.Bucket,
 		prefix:              params.Prefix,
-		outputFields:        params.OutputFields,
-		outputFormat:        params.OutputFormat,
-		outputWriter:        writer,
+		fields:              params.OutputFields,
+		format:              params.OutputFormat,
+		writer:              writer,
 		formatter:           formatters[params.OutputFormat],
 		debug:               params.Debug,
 		listPrefixWorkers:   params.Workers,
 		processPagesWorkers: processPagesWorkers,
-		pageContentCh:       make(chan []types.Object, params.Workers*bufferSize),
-		outputWriterCh:      make(chan [][]string, processPagesWorkers*bufferSize),
-		listPrefixSem:       make(chan struct{}, params.Workers),
+		objsCh:              make(chan []types.Object, params.Workers*bufferSize),
+		recordsCh:           make(chan [][]string, processPagesWorkers*bufferSize),
+		sem:                 make(chan struct{}, params.Workers),
 	}
 
-	return s3ls.list()
+	return s3ls.run()
 }
