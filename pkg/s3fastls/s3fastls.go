@@ -42,22 +42,22 @@ type S3ListObjectsV2API interface {
 }
 
 type s3FastLS struct {
-	ctx                 context.Context
-	cancel              context.CancelFunc
-	client              S3ListObjectsV2API
-	bucket              string
-	prefix              string
-	fields              []Field
-	format              Format
-	writer              io.Writer
-	formatter           Formatter
-	debug               bool
-	listPrefixWorkers   int
-	processPagesWorkers int
-	objsCh              chan []types.Object
-	recordsCh           chan [][]string
-	sem                 chan struct{}
-	eg                  *errgroup.Group
+	ctx            context.Context
+	cancel         context.CancelFunc
+	client         S3ListObjectsV2API
+	bucket         string
+	prefix         string
+	fields         []Field
+	format         Format
+	writer         io.Writer
+	formatter      Formatter
+	debug          bool
+	listWorkers    int
+	processWorkers int
+	objsCh         chan []types.Object
+	recordsCh      chan [][]string
+	sem            chan struct{}
+	eg             *errgroup.Group
 }
 
 type RetryConfig struct {
@@ -90,7 +90,7 @@ func MakeS3Client(cfg aws.Config, endpoint string, retryConfig RetryConfig) *s3.
 	})
 }
 
-func (s *s3FastLS) listPrefix(prefix string) error {
+func (s *s3FastLS) list(prefix string) error {
 	eg := s.eg
 	s.sem <- struct{}{}
 	defer func() { <-s.sem }()
@@ -123,13 +123,13 @@ func (s *s3FastLS) listPrefix(prefix string) error {
 			if s.ctx.Err() != nil {
 				return s.ctx.Err()
 			}
-			eg.Go(func() error { return s.listPrefix(*cp.Prefix) })
+			eg.Go(func() error { return s.list(*cp.Prefix) })
 		}
 	}
 	return nil
 }
 
-func (s *s3FastLS) processPages() error {
+func (s *s3FastLS) process() error {
 	for objs := range s.objsCh {
 		if s.ctx.Err() != nil {
 			return s.ctx.Err()
@@ -162,7 +162,7 @@ func (s *s3FastLS) processPages() error {
 	return nil
 }
 
-func (s *s3FastLS) writeOutput() error {
+func (s *s3FastLS) write() error {
 	for records := range s.recordsCh {
 		for _, record := range records {
 			if s.ctx.Err() != nil {
@@ -183,22 +183,22 @@ func (s *s3FastLS) run() error {
 
 	s.eg = &errgroup.Group{}
 	s.eg.Go(func() error {
-		return s.listPrefix(s.prefix)
+		return s.list(s.prefix)
 	})
 
-	pwEg := &errgroup.Group{}
-	for range s.processPagesWorkers {
-		pwEg.Go(s.processPages)
+	processEg := &errgroup.Group{}
+	for range s.processWorkers {
+		processEg.Go(s.process)
 	}
 
-	woEg := &errgroup.Group{}
-	woEg.Go(s.writeOutput)
+	writeEg := &errgroup.Group{}
+	writeEg.Go(s.write)
 
 	errCh <- s.eg.Wait()
 	close(s.objsCh)
-	errCh <- pwEg.Wait()
+	errCh <- processEg.Wait()
 	close(s.recordsCh)
-	errCh <- woEg.Wait()
+	errCh <- writeEg.Wait()
 
 	close(errCh)
 
@@ -244,20 +244,19 @@ func List(
 	processPagesWorkers := min(params.Workers, runtime.NumCPU())
 
 	s3ls := &s3FastLS{
-		ctx:                 ctx,
-		client:              client,
-		bucket:              params.Bucket,
-		prefix:              params.Prefix,
-		fields:              params.OutputFields,
-		format:              params.OutputFormat,
-		writer:              writer,
-		formatter:           formatters[params.OutputFormat],
-		debug:               params.Debug,
-		listPrefixWorkers:   params.Workers,
-		processPagesWorkers: processPagesWorkers,
-		objsCh:              make(chan []types.Object, params.Workers*bufferSize),
-		recordsCh:           make(chan [][]string, processPagesWorkers*bufferSize),
-		sem:                 make(chan struct{}, params.Workers),
+		ctx:            ctx,
+		client:         client,
+		bucket:         params.Bucket,
+		prefix:         params.Prefix,
+		fields:         params.OutputFields,
+		format:         params.OutputFormat,
+		writer:         writer,
+		formatter:      formatters[params.OutputFormat],
+		listWorkers:    params.Workers,
+		processWorkers: processPagesWorkers,
+		objsCh:         make(chan []types.Object, params.Workers*bufferSize),
+		recordsCh:      make(chan [][]string, processPagesWorkers*bufferSize),
+		sem:            make(chan struct{}, params.Workers),
 	}
 
 	return s3ls.run()
