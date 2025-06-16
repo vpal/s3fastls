@@ -72,6 +72,8 @@ if err := s3fastls.List(ctx, params, client, &buf); err != nil {
 
 ### Error Handling and Context Support
 - The library is context-aware and propagates errors from S3, context cancellation, and output writers in a robust way.
+- If all errors are context-related (canceled or deadline exceeded), only the first context error is returned; otherwise, all non-context errors are joined and returned.
+- The List function will close all channels and cancel all goroutines on error or cancellation.
 
 ### Testability
 - The library is designed to be easy to test and mock in your own projects.
@@ -97,7 +99,7 @@ retryConfig := s3fastls.RetryConfig{
 ## Build and Test
 To build the command-line tool:
 ```
-go build -o s3fastls ./
+go build -o s3fastls ./cmd
 ```
 To run tests (including integration and error propagation tests):
 ```
