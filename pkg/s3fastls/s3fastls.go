@@ -7,7 +7,6 @@ import (
 	"io"
 	"runtime"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -181,39 +180,26 @@ func (s *s3FastLS) writeOutput() error {
 func (s *s3FastLS) run() error {
 	s.ctx, s.cancel = context.WithCancel(s.ctx)
 	errCh := make(chan error, 3)
-	wg := &sync.WaitGroup{}
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		defer close(s.objsCh)
-		s.eg = &errgroup.Group{}
-		s.eg.Go(func() error {
-			return s.listPrefix(s.prefix)
-		})
-		errCh <- s.eg.Wait()
-	}()
+	s.eg = &errgroup.Group{}
+	s.eg.Go(func() error {
+		return s.listPrefix(s.prefix)
+	})
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		defer close(s.recordsCh)
-		eg := &errgroup.Group{}
-		for range s.processPagesWorkers {
-			eg.Go(s.processPages)
-		}
-		errCh <- eg.Wait()
-	}()
+	pwEg := &errgroup.Group{}
+	for range s.processPagesWorkers {
+		pwEg.Go(s.processPages)
+	}
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		eg := &errgroup.Group{}
-		eg.Go(s.writeOutput)
-		errCh <- eg.Wait()
-	}()
+	woEg := &errgroup.Group{}
+	woEg.Go(s.writeOutput)
 
-	wg.Wait()
+	errCh <- s.eg.Wait()
+	close(s.objsCh)
+	errCh <- pwEg.Wait()
+	close(s.recordsCh)
+	errCh <- woEg.Wait()
+
 	close(errCh)
 
 	var errs []error
