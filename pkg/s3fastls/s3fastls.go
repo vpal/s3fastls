@@ -99,9 +99,6 @@ func (s *s3FastLS) list(prefix string) error {
 		Prefix:    aws.String(prefix),
 		Delimiter: aws.String("/"),
 	}
-	if s.ctx.Err() != nil {
-		return s.ctx.Err()
-	}
 	paginator := s3.NewListObjectsV2Paginator(s.client, params)
 	for paginator.HasMorePages() {
 		if s.ctx.Err() != nil {
@@ -131,9 +128,6 @@ func (s *s3FastLS) list(prefix string) error {
 
 func (s *s3FastLS) process() error {
 	for objs := range s.objsCh {
-		if s.ctx.Err() != nil {
-			return s.ctx.Err()
-		}
 		records := make([][]string, len(objs))
 		for i, obj := range objs {
 			record := make([]string, len(s.fields))
