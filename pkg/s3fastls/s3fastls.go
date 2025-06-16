@@ -57,7 +57,7 @@ type s3FastLS struct {
 	objsCh         chan []types.Object
 	recordsCh      chan [][]string
 	sem            chan struct{}
-	eg             *errgroup.Group
+	listEg         *errgroup.Group
 }
 
 type RetryConfig struct {
@@ -91,7 +91,7 @@ func MakeS3Client(cfg aws.Config, endpoint string, retryConfig RetryConfig) *s3.
 }
 
 func (s *s3FastLS) list(prefix string) error {
-	eg := s.eg
+	eg := s.listEg
 	s.sem <- struct{}{}
 	defer func() { <-s.sem }()
 	params := &s3.ListObjectsV2Input{
@@ -181,8 +181,8 @@ func (s *s3FastLS) run() error {
 	s.ctx, s.cancel = context.WithCancel(s.ctx)
 	errCh := make(chan error, 3)
 
-	s.eg = &errgroup.Group{}
-	s.eg.Go(func() error {
+	s.listEg = &errgroup.Group{}
+	s.listEg.Go(func() error {
 		return s.list(s.prefix)
 	})
 
@@ -194,7 +194,7 @@ func (s *s3FastLS) run() error {
 	writeEg := &errgroup.Group{}
 	writeEg.Go(s.write)
 
-	errCh <- s.eg.Wait()
+	errCh <- s.listEg.Wait()
 	close(s.objsCh)
 	errCh <- processEg.Wait()
 	close(s.recordsCh)
