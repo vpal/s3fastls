@@ -15,20 +15,23 @@ s3fastls is a command-line tool and Go library for recursively listing Amazon S3
 - **Testability**: The library is designed for easy testing with mocks and fakes, and includes testing for paging, context cancellation, and error propagation.
 
 ## Usage as a Command-Line Tool
+
 ```
 s3fastls --bucket <bucket> --region <region> [options]
 ```
 
-### Command Line Options
-- `--bucket` (required): Name of the S3 bucket.
-- `--region` (required): AWS region of the bucket.
-- `--endpoint`: Custom S3 endpoint (for S3-compatible storage).
-- `--prefix`: Prefix to start listing from (default: root).
-- `--fields`: Comma-separated list of fields to print (default: Key).
-- `--output-format`: Output format (default: tsv).
-- `--output`: Write output to file instead of stdout.
-- `--workers`: Number of concurrent S3 listing workers (default: number of CPU cores).
-- `--debug`: Print debug information about current prefixes.
+### Required Command Line Options
+- `--bucket`: Name of the S3 bucket (required)
+- `--region`: AWS region of the bucket (required)
+
+### Optional Command Line Options
+- `--endpoint`: Custom S3 endpoint (for S3-compatible storage)
+- `--prefix`: Prefix to start listing from (default: root)
+- `--fields`: Comma-separated list of fields to print (default: Key)
+- `--output`: Write output to file instead of stdout
+- `--workers`: Number of concurrent S3 listing workers (default: number of CPU cores)
+- `--output-format`: Output format (default: tsv; see below)
+- `--stats`: Print statistics after listing
 
 ### Example
 
@@ -42,31 +45,37 @@ s3fastls --bucket my-bucket --region us-east-1 --fields Key,Size,LastModified --
 ```go
 import "github.com/vpal/s3fastls/s3fastls"
 
-// Create AWS config and client
 ctx := context.Background()
 cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion("us-east-1"))
 if err != nil {
     log.Fatalf("unable to load SDK config: %v", err)
 }
 
-// Configure retry behavior
-retryConfig := s3fastls.DefaultRetryConfig() // Or customize: MaxAttempts, MaxBackoff, MinBackoff
+retryConfig := s3fastls.DefaultRetryConfig()
 client := s3fastls.MakeS3Client(cfg, "", retryConfig)
 
-// Configure listing options
 params := s3fastls.S3FastLSParams{
     Bucket:       "my-bucket",
-    Prefix:       "", // or any prefix
+    Prefix:       "",
     OutputFields: []s3fastls.Field{s3fastls.FieldKey, s3fastls.FieldSize},
-    OutputFormat: s3fastls.OutputTSV,
+    Formatter:    s3fastls.TSVFormatter, // Use the built-in TSV formatter
     Workers:      16,
-    Debug:        false,
 }
 
-// Run listing with context and error handling
 var buf bytes.Buffer
-if err := s3fastls.List(ctx, params, client, &buf); err != nil {
+stats, err := s3fastls.List(ctx, params, client, &buf)
+if err != nil {
     log.Fatalf("listing failed: %v", err)
+}
+fmt.Print(buf.String())
+fmt.Printf("Stats: %+v\n", stats)
+```
+
+### Custom Output Formatting
+You can provide your own formatting function:
+```go
+params.Formatter = func(fields []string) string {
+    return strings.Join(fields, ",") // CSV output
 }
 ```
 
@@ -75,8 +84,9 @@ if err := s3fastls.List(ctx, params, client, &buf); err != nil {
 - If all errors are context-related (canceled or deadline exceeded), only the first context error is returned; otherwise, all non-context errors are joined and returned.
 - The List function will close all channels and cancel all goroutines on error or cancellation.
 
-### Testability
-- The library is designed to be easy to test and mock in your own projects.
+## Statistics
+- After listing, statistics are available (number of objects, prefixes, and pages processed).
+- In the CLI, use `--stats` to print these statistics after listing.
 
 ### Available Fields
 ```go
