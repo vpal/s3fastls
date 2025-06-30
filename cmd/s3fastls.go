@@ -17,22 +17,13 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 )
 
-// FieldsFlag implements flag.Value interface for parsing comma-separated field list
 type FieldsFlag []s3fastls.Field
-
-func (f *FieldsFlag) String() string {
-	var fields []string
-	for _, field := range *f {
-		fields = append(fields, string(field))
-	}
-	return strings.Join(fields, ",")
-}
 
 func (f *FieldsFlag) Set(value string) error {
 	if value == "" {
 		return fmt.Errorf("fields cannot be empty")
 	}
-	for _, s := range strings.Split(value, ",") {
+	for s := range strings.SplitSeq(value, ",") {
 		field, err := parseField(s)
 		if err != nil {
 			return fmt.Errorf("invalid field %q", s)
