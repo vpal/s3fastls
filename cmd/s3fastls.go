@@ -42,22 +42,6 @@ func (f *FieldsFlag) Set(value string) error {
 	return nil
 }
 
-// OutputFormatFlag implements flag.Value interface for parsing output format
-type OutputFormatFlag s3fastls.Format
-
-func (f *OutputFormatFlag) String() string {
-	return string(*f)
-}
-
-func (f *OutputFormatFlag) Set(value string) error {
-	format, err := parseOutputFormat(value)
-	if err != nil {
-		return err
-	}
-	*f = OutputFormatFlag(format)
-	return nil
-}
-
 func parseField(s string) (s3fastls.Field, error) {
 	switch s {
 	case string(s3fastls.FieldKey):
@@ -75,51 +59,38 @@ func parseField(s string) (s3fastls.Field, error) {
 	}
 }
 
-func parseOutputFormat(s string) (s3fastls.Format, error) {
-	switch s {
-	case string(s3fastls.OutputTSV):
-		return s3fastls.OutputTSV, nil
-	default:
-		return "", fmt.Errorf("invalid output format: %q", s)
-	}
-}
+func main() {
+	var (
+		bucket     string
+		region     string
+		endpoint   string
+		prefix     string
+		fieldsStr  string
+		outputFile string
+		workers    int
+		showStats  bool
+	)
 
-func parseFlags() (params *s3fastls.S3FastLSParams, region string, endpoint string, outputFile string) {
-	params = new(s3fastls.S3FastLSParams)
-	var fields FieldsFlag
-	var format OutputFormatFlag = OutputFormatFlag(s3fastls.OutputTSV)
-
-	flag.StringVar(&params.Bucket, "bucket", "", "The name of the S3 bucket to list")
-	flag.StringVar(&region, "region", "", "The AWS region of the S3 bucket (required)")
-	flag.StringVar(&endpoint, "endpoint", "", "Custom S3 endpoint (for S3-compatible storage)")
-	flag.StringVar(&params.Prefix, "prefix", "", "Prefix to start listing from (default: root)")
-	flag.Var(&fields, "fields", "Comma-separated list of S3 object fields to print (Key,Size,LastModified,ETag,StorageClass)")
-	flag.Var(&format, "output-format", "Output format: tsv (default)")
-	flag.IntVar(&params.Workers, "workers", runtime.NumCPU(), "Number of concurrent S3 listing workers")
-	flag.BoolVar(&params.Debug, "debug", false, "Print debug information (current prefix)")
-	flag.StringVar(&outputFile, "output", "", "Output file (default: stdout)")
+	flag.StringVar(&bucket, "bucket", "", "S3 bucket name")
+	flag.StringVar(&region, "region", "", "AWS region")
+	flag.StringVar(&endpoint, "endpoint", "", "S3 endpoint")
+	flag.StringVar(&prefix, "prefix", "", "Prefix to list")
+	flag.StringVar(&fieldsStr, "fields", "Key", "Comma-separated list of fields to print")
+	flag.StringVar(&outputFile, "output", "", "Write output to file")
+	flag.IntVar(&workers, "workers", runtime.NumCPU(), "Number of listing workers")
+	flag.BoolVar(&showStats, "stats", false, "Print statistics after listing")
 	flag.Parse()
 
-	if params.Bucket == "" {
-		log.Fatal("bucket parameter is required")
+	// Check required parameters ASAP
+	if bucket == "" {
+		log.Fatalf("--bucket is required")
 	}
 	if region == "" {
-		log.Fatal("region parameter is required")
+		log.Fatalf("--region is required")
 	}
-
-	params.OutputFields = []s3fastls.Field(fields)
-	if len(params.OutputFields) == 0 {
-		params.OutputFields = []s3fastls.Field{s3fastls.FieldKey}
-	}
-	params.OutputFormat = s3fastls.Format(format)
-
-	return params, region, endpoint, outputFile
-}
-
-func main() {
-	params, region, endpoint, outputFile := parseFlags()
 
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	// Handle signals
 	sigChan := make(chan os.Signal, 1)
@@ -150,7 +121,24 @@ func main() {
 		writer = file
 	}
 
-	if err := s3fastls.List(ctx, *params, client, writer); err != nil {
+	fields := FieldsFlag{}
+	if err := fields.Set(fieldsStr); err != nil {
+		log.Fatalf("invalid fields: %v", err)
+	}
+
+	params := s3fastls.S3FastLSParams{
+		Bucket:       bucket,
+		Prefix:       prefix,
+		OutputFields: fields,
+		Formatter:    s3fastls.FormatTSV,
+		Workers:      workers,
+	}
+
+	stats, err := s3fastls.List(ctx, params, client, writer)
+	if err != nil {
 		log.Fatalf("listing failed: %v", err)
+	}
+	if showStats {
+		fmt.Printf("\nStatistics:\nObjects: %d\nPrefixes: %d\nPages: %d\n", stats.Objects, stats.Prefixes, stats.Pages)
 	}
 }
