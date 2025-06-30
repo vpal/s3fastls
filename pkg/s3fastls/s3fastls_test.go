@@ -89,7 +89,7 @@ func TestList_EndToEnd(t *testing.T) {
 		Bucket:       bucket,
 		Prefix:       "",
 		OutputFields: []Field{FieldKey},
-		OutputFormat: FormatTSV,
+		Formatter:    FormatTSV,
 		Workers:      1,
 	}
 
@@ -122,7 +122,7 @@ func TestList_Basic(t *testing.T) {
 		Bucket:       "mock-bucket",
 		Prefix:       "",
 		OutputFields: []Field{FieldKey, FieldSize},
-		OutputFormat: FormatTSV,
+		Formatter:    FormatTSV,
 		Workers:      1,
 	}
 	var buf bytes.Buffer
@@ -154,7 +154,7 @@ func TestList_WriterError(t *testing.T) {
 		Bucket:       "mock-bucket",
 		Prefix:       "",
 		OutputFields: []Field{FieldKey, FieldSize},
-		OutputFormat: FormatTSV,
+		Formatter:    FormatTSV,
 		Workers:      1,
 	}
 	w := &errorWriter{}
@@ -172,7 +172,7 @@ func TestList_PagingError(t *testing.T) {
 		Bucket:       "mock-bucket",
 		Prefix:       "",
 		OutputFields: []Field{FieldKey, FieldSize},
-		OutputFormat: FormatTSV,
+		Formatter:    FormatTSV,
 		Workers:      1,
 	}
 	var buf bytes.Buffer
@@ -190,7 +190,7 @@ func TestList_ContextTimeout(t *testing.T) {
 		Bucket:       "mock-bucket",
 		Prefix:       "",
 		OutputFields: []Field{FieldKey, FieldSize},
-		OutputFormat: FormatTSV,
+		Formatter:    FormatTSV,
 		Workers:      1,
 	}
 	var buf bytes.Buffer
@@ -207,7 +207,7 @@ func TestList_ContextExplicitCancel(t *testing.T) {
 		Bucket:       "mock-bucket",
 		Prefix:       "",
 		OutputFields: []Field{FieldKey, FieldSize},
-		OutputFormat: FormatTSV,
+		Formatter:    FormatTSV,
 		Workers:      1,
 	}
 	var buf bytes.Buffer
@@ -237,7 +237,7 @@ func TestList_Prefixes(t *testing.T) {
 		Bucket:       "mock-bucket",
 		Prefix:       "",
 		OutputFields: []Field{FieldKey, FieldSize},
-		OutputFormat: FormatTSV,
+		Formatter:    FormatTSV,
 		Workers:      2,
 	}
 	var buf bytes.Buffer
@@ -278,7 +278,7 @@ func TestList_PrefixesNoRoot(t *testing.T) {
 		Bucket:       "mock-bucket",
 		Prefix:       "",
 		OutputFields: []Field{FieldKey, FieldSize},
-		OutputFormat: FormatTSV,
+		Formatter:    FormatTSV,
 		Workers:      2,
 	}
 	var buf bytes.Buffer

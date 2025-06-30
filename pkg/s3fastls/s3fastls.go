@@ -18,7 +18,6 @@ import (
 )
 
 type Field string
-type Format string
 type Formatter func([]string) string
 
 const (
@@ -30,12 +29,11 @@ const (
 	FieldLastModified Field = "LastModified"
 	FieldETag         Field = "ETag"
 	FieldStorageClass Field = "StorageClass"
-
-	FormatTSV Format = "tsv"
 )
 
-var formatters = map[Format]Formatter{
-	FormatTSV: func(fields []string) string { return strings.Join(fields, "\t") },
+// FormatTSV is a predefined formatter for TSV output.
+func FormatTSV(fields []string) string {
+	return strings.Join(fields, "\t")
 }
 
 type S3ListObjectsV2API interface {
@@ -55,7 +53,6 @@ type s3FastLS struct {
 	bucket         string
 	prefix         string
 	fields         []Field
-	format         Format
 	writer         io.Writer
 	formatter      Formatter
 	listWorkers    int
@@ -247,7 +244,7 @@ type S3FastLSParams struct {
 	Bucket       string
 	Prefix       string
 	OutputFields []Field
-	OutputFormat Format
+	Formatter    Formatter
 	Workers      int
 }
 
@@ -264,10 +261,9 @@ func List(
 		client:         client,
 		bucket:         params.Bucket,
 		prefix:         params.Prefix,
+		formatter:      params.Formatter,
 		fields:         params.OutputFields,
-		format:         params.OutputFormat,
 		writer:         writer,
-		formatter:      formatters[params.OutputFormat],
 		listWorkers:    params.Workers,
 		processWorkers: processPagesWorkers,
 		objsCh:         make(chan []types.Object, params.Workers*bufferSize),
