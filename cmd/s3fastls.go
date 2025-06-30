@@ -14,10 +14,19 @@ import (
 
 	"github.com/vpal/s3fastls/pkg/s3fastls"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 )
 
 type FieldsFlag []s3fastls.Field
+
+func (f *FieldsFlag) String() string {
+	var fields []string
+	for _, field := range *f {
+		fields = append(fields, string(field))
+	}
+	return strings.Join(fields, ",")
+}
 
 func (f *FieldsFlag) Set(value string) error {
 	if value == "" {
@@ -50,34 +59,31 @@ func parseField(s string) (s3fastls.Field, error) {
 	}
 }
 
-func main() {
-	var (
-		bucket     string
-		region     string
-		endpoint   string
-		prefix     string
-		fieldsStr  string
-		outputFile string
-		workers    int
-		showStats  bool
-	)
+var (
+	bucket     string
+	region     string
+	endpoint   string
+	prefix     string
+	outputFile string
+	workers    int
+	showStats  bool
+	fields     FieldsFlag = FieldsFlag{s3fastls.FieldKey} // default value
+)
 
+func main() {
 	flag.StringVar(&bucket, "bucket", "", "S3 bucket name")
 	flag.StringVar(&region, "region", "", "AWS region")
 	flag.StringVar(&endpoint, "endpoint", "", "S3 endpoint")
 	flag.StringVar(&prefix, "prefix", "", "Prefix to list")
-	flag.StringVar(&fieldsStr, "fields", "Key", "Comma-separated list of fields to print")
 	flag.StringVar(&outputFile, "output", "", "Write output to file")
 	flag.IntVar(&workers, "workers", runtime.NumCPU(), "Number of listing workers")
 	flag.BoolVar(&showStats, "stats", false, "Print statistics after listing")
+	flag.Var(&fields, "fields", "Comma-separated list of fields to print (default: Key)")
 	flag.Parse()
 
 	// Check required parameters ASAP
 	if bucket == "" {
 		log.Fatalf("--bucket is required")
-	}
-	if region == "" {
-		log.Fatalf("--region is required")
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -92,7 +98,13 @@ func main() {
 		cancel()
 	}()
 
-	awsCfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
+	awsCfg, err := func() (aws.Config, error) {
+		if region != "" {
+			return config.LoadDefaultConfig(ctx, config.WithRegion(region))
+		}
+		return config.LoadDefaultConfig(ctx)
+	}()
+
 	if err != nil {
 		log.Fatalf("failed to load AWS configuration: %v", err)
 	}
@@ -110,11 +122,6 @@ func main() {
 		}
 		defer file.Close()
 		writer = file
-	}
-
-	fields := FieldsFlag{}
-	if err := fields.Set(fieldsStr); err != nil {
-		log.Fatalf("invalid fields: %v", err)
 	}
 
 	params := s3fastls.S3FastLSParams{

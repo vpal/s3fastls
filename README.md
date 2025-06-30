@@ -16,14 +16,14 @@ s3fastls is a command-line tool and Go library for recursively listing Amazon S3
 ## Usage as a Command-Line Tool
 
 ```
-s3fastls --bucket <bucket> --region <region> [options]
+s3fastls --bucket <bucket> [options]
 ```
 
 ### Required Command Line Options
 - `--bucket`: Name of the S3 bucket (required)
-- `--region`: AWS region of the bucket (required)
 
 ### Optional Command Line Options
+- `--region`: AWS region of the bucket (can be set via environment or AWS config)
 - `--endpoint`: Custom S3 endpoint (for S3-compatible storage)
 - `--prefix`: Prefix to start listing from (default: root)
 - `--fields`: Comma-separated list of fields to print (default: Key)
