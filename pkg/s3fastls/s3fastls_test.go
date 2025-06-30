@@ -89,12 +89,12 @@ func TestList_EndToEnd(t *testing.T) {
 		Bucket:       bucket,
 		Prefix:       "",
 		OutputFields: []Field{FieldKey},
-		OutputFormat: OutputTSV,
+		OutputFormat: FormatTSV,
 		Workers:      1,
-		Debug:        false,
 	}
 
-	if err := List(ctx, params, client, &buf); err != nil {
+	stats, err := List(ctx, params, client, &buf)
+	if err != nil {
 		t.Fatalf("listing failed: %v", err)
 	}
 
@@ -103,6 +103,47 @@ func TestList_EndToEnd(t *testing.T) {
 		if !strings.Contains(output, obj.key) {
 			t.Errorf("output missing object %s", obj.key)
 		}
+	}
+	if stats.Objects != int64(len(testObjects)) {
+		t.Errorf("expected %d objects, got %d", len(testObjects), stats.Objects)
+	}
+	if stats.Prefixes != 1 {
+		t.Errorf("expected 1 prefix, got %d", stats.Prefixes)
+	}
+	if stats.Pages < 1 {
+		t.Errorf("expected at least 1 page, got %d", stats.Pages)
+	}
+}
+
+func TestList_Basic(t *testing.T) {
+	testObjects := []string{"file1.txt", "file2.txt"}
+	client := &flexibleMockS3Client{objects: testObjects}
+	params := S3FastLSParams{
+		Bucket:       "mock-bucket",
+		Prefix:       "",
+		OutputFields: []Field{FieldKey, FieldSize},
+		OutputFormat: FormatTSV,
+		Workers:      1,
+	}
+	var buf bytes.Buffer
+	stats, err := List(context.Background(), params, client, &buf)
+	if err != nil {
+		t.Fatalf("listing failed: %v", err)
+	}
+	output := buf.String()
+	for _, obj := range testObjects {
+		if !strings.Contains(output, obj) {
+			t.Errorf("output missing object %s", obj)
+		}
+	}
+	if stats.Objects != int64(len(testObjects)) {
+		t.Errorf("expected %d objects, got %d", len(testObjects), stats.Objects)
+	}
+	if stats.Prefixes != 1 {
+		t.Errorf("expected 1 prefix, got %d", stats.Prefixes)
+	}
+	if stats.Pages < 1 {
+		t.Errorf("expected at least 1 page, got %d", stats.Pages)
 	}
 }
 
@@ -113,13 +154,11 @@ func TestList_WriterError(t *testing.T) {
 		Bucket:       "mock-bucket",
 		Prefix:       "",
 		OutputFields: []Field{FieldKey, FieldSize},
-		OutputFormat: OutputTSV,
+		OutputFormat: FormatTSV,
 		Workers:      1,
-		Debug:        false,
 	}
 	w := &errorWriter{}
-	_ = time.Now()
-	err := List(ctx, params, client, w)
+	_, err := List(ctx, params, client, w)
 	if err == nil || !strings.Contains(err.Error(), "disk full") {
 		t.Errorf("expected disk full error, got %v", err)
 	}
@@ -133,12 +172,11 @@ func TestList_PagingError(t *testing.T) {
 		Bucket:       "mock-bucket",
 		Prefix:       "",
 		OutputFields: []Field{FieldKey, FieldSize},
-		OutputFormat: OutputTSV,
+		OutputFormat: FormatTSV,
 		Workers:      1,
-		Debug:        false,
 	}
 	var buf bytes.Buffer
-	err := List(ctx, params, client, &buf)
+	_, err := List(ctx, params, client, &buf)
 	if err == nil || !strings.Contains(err.Error(), "simulated paging error") {
 		t.Errorf("expected paging error, got %v", err)
 	}
@@ -152,13 +190,12 @@ func TestList_ContextTimeout(t *testing.T) {
 		Bucket:       "mock-bucket",
 		Prefix:       "",
 		OutputFields: []Field{FieldKey, FieldSize},
-		OutputFormat: OutputTSV,
+		OutputFormat: FormatTSV,
 		Workers:      1,
-		Debug:        false,
 	}
 	var buf bytes.Buffer
-	err := List(ctx, params, client, &buf)
-	if err == nil || !(strings.Contains(err.Error(), "context deadline exceeded") || strings.Contains(err.Error(), "canceled")) {
+	_, err := List(ctx, params, client, &buf)
+	if err == nil || (!strings.Contains(err.Error(), "context deadline exceeded") && !strings.Contains(err.Error(), "canceled")) {
 		t.Errorf("expected context cancellation error, got %v", err)
 	}
 }
@@ -170,18 +207,100 @@ func TestList_ContextExplicitCancel(t *testing.T) {
 		Bucket:       "mock-bucket",
 		Prefix:       "",
 		OutputFields: []Field{FieldKey, FieldSize},
-		OutputFormat: OutputTSV,
+		OutputFormat: FormatTSV,
 		Workers:      1,
-		Debug:        false,
 	}
 	var buf bytes.Buffer
 	go func() {
 		time.Sleep(2 * time.Second)
 		cancel()
 	}()
-	err := List(ctx, params, client, &buf)
-	if err == nil || !(strings.Contains(err.Error(), "context canceled") || strings.Contains(err.Error(), "canceled")) {
+	_, err := List(ctx, params, client, &buf)
+	if err == nil || (!strings.Contains(err.Error(), "context canceled") && !strings.Contains(err.Error(), "canceled")) {
 		t.Errorf("expected context cancellation error, got %v", err)
+	}
+}
+
+func TestList_Prefixes(t *testing.T) {
+	// Objects: 2 in root, 3 in a/b, 2 in a/c, 2 in d, 2 in e/f, 4 in g
+	// Prefixes: "" (root), "a/", "a/b/", "a/c/", "d/", "e/", "e/f/", "g/" => 8
+	objects := []string{
+		"file1.txt", "file2.txt", // root
+		"a/b/file3.txt", "a/b/file4.txt", "a/b/file5.txt",
+		"a/c/file6.txt", "a/c/file7.txt",
+		"d/file8.txt", "d/file9.txt",
+		"e/f/file10.txt", "e/f/file11.txt",
+		"g/file12.txt", "g/file13.txt", "g/file14.txt", "g/file15.txt",
+	}
+	client := &flexibleMockS3Client{objects: objects}
+	params := S3FastLSParams{
+		Bucket:       "mock-bucket",
+		Prefix:       "",
+		OutputFields: []Field{FieldKey, FieldSize},
+		OutputFormat: FormatTSV,
+		Workers:      2,
+	}
+	var buf bytes.Buffer
+	stats, err := List(context.Background(), params, client, &buf)
+	if err != nil {
+		t.Fatalf("listing failed: %v", err)
+	}
+	output := buf.String()
+	for _, obj := range objects {
+		if !strings.Contains(output, obj) {
+			t.Errorf("output missing object %s", obj)
+		}
+	}
+	if stats.Objects != int64(len(objects)) {
+		t.Errorf("expected %d objects, got %d", len(objects), stats.Objects)
+	}
+	// Prefixes: root ("") + a/ + a/b/ + a/c/ + d/ + e/ + e/f/ + g/ = 8
+	if stats.Prefixes != 8 {
+		t.Errorf("expected 8 prefixes, got %d", stats.Prefixes)
+	}
+	if stats.Pages < 1 {
+		t.Errorf("expected at least 1 page, got %d", stats.Pages)
+	}
+}
+
+func TestList_PrefixesNoRoot(t *testing.T) {
+	// Objects: 3 in a/b, 2 in a/c, 2 in d, 2 in e/f, 4 in g
+	// Prefixes: "" (root), "a/", "a/b/", "a/c/", "d/", "e/", "e/f/", "g/" => 8
+	objects := []string{
+		"a/b/file3.txt", "a/b/file4.txt", "a/b/file5.txt",
+		"a/c/file6.txt", "a/c/file7.txt",
+		"d/file8.txt", "d/file9.txt",
+		"e/f/file10.txt", "e/f/file11.txt",
+		"g/file12.txt", "g/file13.txt", "g/file14.txt", "g/file15.txt",
+	}
+	client := &flexibleMockS3Client{objects: objects}
+	params := S3FastLSParams{
+		Bucket:       "mock-bucket",
+		Prefix:       "",
+		OutputFields: []Field{FieldKey, FieldSize},
+		OutputFormat: FormatTSV,
+		Workers:      2,
+	}
+	var buf bytes.Buffer
+	stats, err := List(context.Background(), params, client, &buf)
+	if err != nil {
+		t.Fatalf("listing failed: %v", err)
+	}
+	output := buf.String()
+	for _, obj := range objects {
+		if !strings.Contains(output, obj) {
+			t.Errorf("output missing object %s", obj)
+		}
+	}
+	if stats.Objects != int64(len(objects)) {
+		t.Errorf("expected %d objects, got %d", len(objects), stats.Objects)
+	}
+	// Prefixes: root ("") + a/ + a/b/ + a/c/ + d/ + e/ + e/f/ + g/ = 8
+	if stats.Prefixes != 8 {
+		t.Errorf("expected 8 prefixes, got %d", stats.Prefixes)
+	}
+	if stats.Pages < 1 {
+		t.Errorf("expected at least 1 page, got %d", stats.Pages)
 	}
 }
 
@@ -190,13 +309,16 @@ func TestList_ContextExplicitCancel(t *testing.T) {
 type mockS3Client struct{}
 
 func (m *mockS3Client) ListObjectsV2(ctx context.Context, params *s3.ListObjectsV2Input, optFns ...func(*s3.Options)) (*s3.ListObjectsV2Output, error) {
+	objs := []types.Object{
+		{Key: aws.String("file1.txt"), Size: aws.Int64(123)},
+		{Key: aws.String("file2.txt"), Size: aws.Int64(456)},
+	}
 	return &s3.ListObjectsV2Output{
-		Contents: []types.Object{
-			{
-				Key:  aws.String("mockfile.txt"),
-				Size: aws.Int64(123),
-			},
-		},
+		Contents: objs,
+		// CommonPrefixes: []types.CommonPrefix{
+		// 	{Prefix: aws.String("someprefix/")},
+		// },
+		IsTruncated: aws.Bool(false),
 	}, nil
 }
 
@@ -240,5 +362,46 @@ func (m *errorPagingMockS3Client) ListObjectsV2(ctx context.Context, params *s3.
 		Contents:              []types.Object{{Key: aws.String(fmt.Sprintf("file%d.txt", m.call)), Size: aws.Int64(int64(m.call * 100))}},
 		IsTruncated:           aws.Bool(true),
 		NextContinuationToken: aws.String(fmt.Sprintf("token%d", m.call+1)),
+	}, nil
+}
+
+// flexibleMockS3Client is a mock S3 client that returns objects and common prefixes based on a provided list of keys.
+type flexibleMockS3Client struct {
+	objects []string
+}
+
+func (m *flexibleMockS3Client) ListObjectsV2(ctx context.Context, params *s3.ListObjectsV2Input, _ ...func(*s3.Options)) (*s3.ListObjectsV2Output, error) {
+	prefix := aws.ToString(params.Prefix)
+	delimiter := aws.ToString(params.Delimiter)
+	contents := []types.Object{}
+	prefixSet := make(map[string]struct{})
+
+	for _, key := range m.objects {
+		if !strings.HasPrefix(key, prefix) {
+			continue
+		}
+		rest := strings.TrimPrefix(key, prefix)
+		if delimiter != "" {
+			if idx := strings.Index(rest, delimiter); idx >= 0 {
+				subPrefix := key[:len(prefix)+idx+1]
+				prefixSet[subPrefix] = struct{}{}
+				continue
+			}
+		}
+		contents = append(contents, types.Object{
+			Key:  aws.String(key),
+			Size: aws.Int64(123),
+		})
+	}
+
+	commonPrefixes := []types.CommonPrefix{}
+	for p := range prefixSet {
+		commonPrefixes = append(commonPrefixes, types.CommonPrefix{Prefix: aws.String(p)})
+	}
+
+	return &s3.ListObjectsV2Output{
+		Contents:       contents,
+		CommonPrefixes: commonPrefixes,
+		IsTruncated:    aws.Bool(false),
 	}, nil
 }
