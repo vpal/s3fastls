@@ -241,11 +241,11 @@ func (s *s3FastLS) run() error {
 }
 
 type S3FastLSParams struct {
-	Bucket       string
-	Prefix       string
-	OutputFields []Field
-	Formatter    Formatter
-	Workers      int
+	Bucket    string
+	Prefix    string
+	Fields    []Field
+	Formatter Formatter
+	Workers   int
 }
 
 func List(
@@ -262,7 +262,7 @@ func List(
 		bucket:         params.Bucket,
 		prefix:         params.Prefix,
 		formatter:      params.Formatter,
-		fields:         params.OutputFields,
+		fields:         params.Fields,
 		writer:         writer,
 		listWorkers:    params.Workers,
 		processWorkers: processPagesWorkers,

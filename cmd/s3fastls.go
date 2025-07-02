@@ -127,11 +127,11 @@ func main() {
 	}
 
 	params := s3fastls.S3FastLSParams{
-		Bucket:       bucket,
-		Prefix:       prefix,
-		OutputFields: fields,
-		Formatter:    s3fastls.FormatTSV,
-		Workers:      workers,
+		Bucket:    bucket,
+		Prefix:    prefix,
+		Fields:    fields,
+		Formatter: s3fastls.FormatTSV,
+		Workers:   workers,
 	}
 
 	stats, err := s3fastls.List(ctx, params, client, writer)

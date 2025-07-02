@@ -87,11 +87,11 @@ func TestList_EndToEnd(t *testing.T) {
 
 	var buf bytes.Buffer
 	params := S3FastLSParams{
-		Bucket:       bucket,
-		Prefix:       "",
-		OutputFields: []Field{FieldKey},
-		Formatter:    FormatTSV,
-		Workers:      1,
+		Bucket:    bucket,
+		Prefix:    "",
+		Fields:    []Field{FieldKey},
+		Formatter: FormatTSV,
+		Workers:   1,
 	}
 
 	stats, err := List(ctx, params, client, &buf)
@@ -120,11 +120,11 @@ func TestList_Basic(t *testing.T) {
 	testObjects := []string{"file1.txt", "file2.txt"}
 	client := &mockS3Client{objects: testObjects}
 	params := S3FastLSParams{
-		Bucket:       "mock-bucket",
-		Prefix:       "",
-		OutputFields: []Field{FieldKey, FieldSize},
-		Formatter:    FormatTSV,
-		Workers:      1,
+		Bucket:    "mock-bucket",
+		Prefix:    "",
+		Fields:    []Field{FieldKey, FieldSize},
+		Formatter: FormatTSV,
+		Workers:   1,
 	}
 	var buf bytes.Buffer
 	stats, err := List(context.Background(), params, client, &buf)
@@ -152,11 +152,11 @@ func TestList_WriterError(t *testing.T) {
 	ctx := context.Background()
 	client := &slowPagingMockS3Client{}
 	params := S3FastLSParams{
-		Bucket:       "mock-bucket",
-		Prefix:       "",
-		OutputFields: []Field{FieldKey, FieldSize},
-		Formatter:    FormatTSV,
-		Workers:      1,
+		Bucket:    "mock-bucket",
+		Prefix:    "",
+		Fields:    []Field{FieldKey, FieldSize},
+		Formatter: FormatTSV,
+		Workers:   1,
 	}
 	w := &errorWriter{}
 	_, err := List(ctx, params, client, w)
@@ -170,11 +170,11 @@ func TestList_PagingError(t *testing.T) {
 	failOnPage := 3
 	client := &errorPagingMockS3Client{failPage: failOnPage}
 	params := S3FastLSParams{
-		Bucket:       "mock-bucket",
-		Prefix:       "",
-		OutputFields: []Field{FieldKey, FieldSize},
-		Formatter:    FormatTSV,
-		Workers:      1,
+		Bucket:    "mock-bucket",
+		Prefix:    "",
+		Fields:    []Field{FieldKey, FieldSize},
+		Formatter: FormatTSV,
+		Workers:   1,
 	}
 	var buf bytes.Buffer
 	_, err := List(ctx, params, client, &buf)
@@ -188,11 +188,11 @@ func TestList_ContextTimeout(t *testing.T) {
 	defer cancel()
 	client := &slowPagingMockS3Client{}
 	params := S3FastLSParams{
-		Bucket:       "mock-bucket",
-		Prefix:       "",
-		OutputFields: []Field{FieldKey, FieldSize},
-		Formatter:    FormatTSV,
-		Workers:      1,
+		Bucket:    "mock-bucket",
+		Prefix:    "",
+		Fields:    []Field{FieldKey, FieldSize},
+		Formatter: FormatTSV,
+		Workers:   1,
 	}
 	var buf bytes.Buffer
 	_, err := List(ctx, params, client, &buf)
@@ -205,11 +205,11 @@ func TestList_ContextExplicitCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	client := &slowPagingMockS3Client{}
 	params := S3FastLSParams{
-		Bucket:       "mock-bucket",
-		Prefix:       "",
-		OutputFields: []Field{FieldKey, FieldSize},
-		Formatter:    FormatTSV,
-		Workers:      1,
+		Bucket:    "mock-bucket",
+		Prefix:    "",
+		Fields:    []Field{FieldKey, FieldSize},
+		Formatter: FormatTSV,
+		Workers:   1,
 	}
 	var buf bytes.Buffer
 	go func() {
@@ -228,11 +228,11 @@ func TestList_Prefixes(t *testing.T) {
 	objects := objectsWithRoot
 	client := &mockS3Client{objects: objects}
 	params := S3FastLSParams{
-		Bucket:       "mock-bucket",
-		Prefix:       "",
-		OutputFields: []Field{FieldKey, FieldSize},
-		Formatter:    FormatTSV,
-		Workers:      2,
+		Bucket:    "mock-bucket",
+		Prefix:    "",
+		Fields:    []Field{FieldKey, FieldSize},
+		Formatter: FormatTSV,
+		Workers:   2,
 	}
 	var buf bytes.Buffer
 	stats, err := List(context.Background(), params, client, &buf)
@@ -262,11 +262,11 @@ func TestList_PrefixesNoRoot(t *testing.T) {
 	objects := objectsNoRoot
 	client := &mockS3Client{objects: objects}
 	params := S3FastLSParams{
-		Bucket:       "mock-bucket",
-		Prefix:       "",
-		OutputFields: []Field{FieldKey, FieldSize},
-		Formatter:    FormatTSV,
-		Workers:      2,
+		Bucket:    "mock-bucket",
+		Prefix:    "",
+		Fields:    []Field{FieldKey, FieldSize},
+		Formatter: FormatTSV,
+		Workers:   2,
 	}
 	var buf bytes.Buffer
 	stats, err := List(context.Background(), params, client, &buf)
@@ -353,11 +353,11 @@ func TestList_Prefixes_GoFakeS3(t *testing.T) {
 	}
 
 	params := S3FastLSParams{
-		Bucket:       bucket,
-		Prefix:       "",
-		OutputFields: []Field{FieldKey, FieldSize},
-		Formatter:    FormatTSV,
-		Workers:      2,
+		Bucket:    bucket,
+		Prefix:    "",
+		Fields:    []Field{FieldKey, FieldSize},
+		Formatter: FormatTSV,
+		Workers:   2,
 	}
 	var buf bytes.Buffer
 	stats, err := List(ctx, params, client, &buf)
@@ -412,11 +412,11 @@ func TestList_PrefixesNoRoot_GoFakeS3(t *testing.T) {
 	}
 
 	params := S3FastLSParams{
-		Bucket:       bucket,
-		Prefix:       "",
-		OutputFields: []Field{FieldKey, FieldSize},
-		Formatter:    FormatTSV,
-		Workers:      2,
+		Bucket:    bucket,
+		Prefix:    "",
+		Fields:    []Field{FieldKey, FieldSize},
+		Formatter: FormatTSV,
+		Workers:   2,
 	}
 	var buf bytes.Buffer
 	stats, err := List(ctx, params, client, &buf)
@@ -450,11 +450,11 @@ func runPrefixTestWithBackends(t *testing.T, objects []string, expectPrefixes in
 		{"mock", func(t *testing.T, objects []string) {
 			client := &mockS3Client{objects: objects}
 			params := S3FastLSParams{
-				Bucket:       "mock-bucket",
-				Prefix:       "",
-				OutputFields: []Field{FieldKey, FieldSize},
-				Formatter:    FormatTSV,
-				Workers:      2,
+				Bucket:    "mock-bucket",
+				Prefix:    "",
+				Fields:    []Field{FieldKey, FieldSize},
+				Formatter: FormatTSV,
+				Workers:   2,
 			}
 			var buf bytes.Buffer
 			stats, err := List(context.Background(), params, client, &buf)
@@ -508,11 +508,11 @@ func runPrefixTestWithBackends(t *testing.T, objects []string, expectPrefixes in
 			}
 
 			params := S3FastLSParams{
-				Bucket:       bucket,
-				Prefix:       "",
-				OutputFields: []Field{FieldKey, FieldSize},
-				Formatter:    FormatTSV,
-				Workers:      2,
+				Bucket:    bucket,
+				Prefix:    "",
+				Fields:    []Field{FieldKey, FieldSize},
+				Formatter: FormatTSV,
+				Workers:   2,
 			}
 			var buf bytes.Buffer
 			stats, err := List(ctx, params, client, &buf)
