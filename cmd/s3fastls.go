@@ -67,6 +67,7 @@ var (
 	outputFile string
 	workers    int
 	showStats  bool
+	showCost   bool
 	fields     FieldsFlag = FieldsFlag{s3fastls.FieldKey} // default value
 )
 
@@ -79,6 +80,7 @@ func main() {
 	flag.IntVar(&workers, "workers", runtime.NumCPU(), "Number of listing workers")
 	flag.BoolVar(&showStats, "stats", false, "Print statistics after listing")
 	flag.Var(&fields, "fields", "Comma-separated list of fields to print (default: Key)")
+	flag.BoolVar(&showCost, "cost", false, "Estimate and print S3 LIST request costs after listing")
 	flag.Parse()
 
 	// Check required parameters ASAP
@@ -138,5 +140,13 @@ func main() {
 	}
 	if showStats {
 		fmt.Printf("\nStatistics:\nObjects: %d\nPrefixes: %d\nPages: %d\n", stats.Objects, stats.Prefixes, stats.Pages)
+	}
+	if showCost {
+		cost, err := EstimateS3ListRequestCost(ctx, region, int(stats.Pages))
+		if err != nil {
+			log.Printf("[warn] failed to estimate S3 LIST costs: %v", err)
+		} else {
+			fmt.Printf("Estimated S3 LIST request cost: $%.6f\n", cost)
+		}
 	}
 }

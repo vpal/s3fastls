@@ -29,12 +29,18 @@ s3fastls --bucket <bucket> [options]
 - `--fields`: Comma-separated list of fields to print (default: Key)
 - `--output`: Write output to file instead of stdout
 - `--workers`: Number of concurrent S3 listing workers (default: number of CPU cores)
-- `--output-format`: Output format (default: tsv; see below)
 - `--stats`: Print statistics after listing
+- `--cost`: Estimate and print S3 LIST request costs after listing
+
+### Output Format
+- Output is always in TSV (tab-separated values) format.
+- The columns/fields are printed in the order specified by the `--fields` flag.
 
 ### Example
 
 ```
+export AWS_ACCESS_KEY_ID=your-access-key-id
+export AWS_SECRET_ACCESS_KEY=your-secret-access-key
 s3fastls --bucket my-bucket --region us-east-1 --fields Key,Size,LastModified --output results.tsv --workers 16
 ```
 
@@ -120,6 +126,33 @@ go test -v ./...
 - This tool is designed for speed and concurrency, but aggressive settings may impact S3 performance or cost.
 - All error handling, context cancellation, and channel closing is robust and tested.
 - Use this tool at your own risk. The authors are not responsible for any data loss, API throttling, or unexpected costs incurred by its use.
+
+## AWS Authentication, Region, and Credential Resolution
+
+s3fastls uses the standard AWS SDK for Go v2 authentication and configuration mechanisms. **There are no command-line options for credentials**; you must provide them via the standard AWS mechanisms described below.
+
+### How authentication and region resolution works
+
+When you run s3fastls, the AWS SDK will automatically look for credentials and region in the following order (see [AWS SDK for Go v2 documentation](https://aws.github.io/aws-sdk-go-v2/docs/configuring-sdk/#specifying-credentials) and [AWS documentation](https://docs.aws.amazon.com/sdkref/latest/guide/creds-config.html)):
+
+1. **Environment variables**
+   - `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and optionally `AWS_SESSION_TOKEN`
+   - `AWS_REGION` or `AWS_DEFAULT_REGION`
+2. **Shared credentials file** (`~/.aws/credentials`)
+3. **Shared config file** (`~/.aws/config`)
+   - Profiles can be selected with `AWS_PROFILE`
+4. **EC2/ECS Instance Metadata** (if running on AWS infrastructure)
+5. **Other supported credential providers** (see AWS SDK docs)
+
+If you do **not** specify `--region`, the region will be resolved from the above sources in the same order. **Credentials must be provided via one of the above mechanisms.**
+
+**Best practice:**
+- Use environment variables or AWS config files for credentials and region, and only override region with CLI flags if needed.
+- You can use named profiles with `AWS_PROFILE=your-profile s3fastls ...`.
+
+**References:**
+- [AWS SDK for Go v2: Configuration and Credentials](https://aws.github.io/aws-sdk-go-v2/docs/configuring-sdk/)
+- [AWS CLI: Configuration and credential file settings](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-files.html)
 
 ## License
 MIT License

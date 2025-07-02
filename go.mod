@@ -5,6 +5,7 @@ go 1.24.3
 require (
 	github.com/aws/aws-sdk-go-v2 v1.36.5
 	github.com/aws/aws-sdk-go-v2/config v1.29.17
+	github.com/aws/aws-sdk-go-v2/service/pricing v1.34.5
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.82.0
 	github.com/johannesboyne/gofakes3 v0.0.0-20250603205740-ed9094be7668
 	golang.org/x/sync v0.15.0
