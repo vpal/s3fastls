@@ -15,6 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/johannesboyne/gofakes3"
 	"github.com/johannesboyne/gofakes3/backend/s3mem"
 )
@@ -45,7 +46,9 @@ func TestList_EndToEnd(t *testing.T) {
 	defer cancel()
 
 	bucket := "test-bucket"
-	backend.CreateBucket(bucket)
+	if err := backend.CreateBucket(bucket); err != nil {
+		t.Fatalf("failed to create bucket: %v", err)
+	}
 
 	testObjects := []struct {
 		key     string
@@ -57,6 +60,7 @@ func TestList_EndToEnd(t *testing.T) {
 
 	cfg, err := config.LoadDefaultConfig(ctx,
 		config.WithRegion("us-east-1"),
+		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider("TESTKEY", "TESTSECRET", "")),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -332,9 +336,14 @@ func TestList_Prefixes_GoFakeS3(t *testing.T) {
 	defer cancel()
 
 	bucket := "test-bucket"
-	backend.CreateBucket(bucket)
+	if err := backend.CreateBucket(bucket); err != nil {
+		t.Fatalf("failed to create bucket: %v", err)
+	}
 
-	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion("us-east-1"))
+	cfg, err := config.LoadDefaultConfig(ctx,
+		config.WithRegion("us-east-1"),
+		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider("TESTKEY", "TESTSECRET", "")),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -391,9 +400,14 @@ func TestList_PrefixesNoRoot_GoFakeS3(t *testing.T) {
 	defer cancel()
 
 	bucket := "test-bucket"
-	backend.CreateBucket(bucket)
+	if err := backend.CreateBucket(bucket); err != nil {
+		t.Fatalf("failed to create bucket: %v", err)
+	}
 
-	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion("us-east-1"))
+	cfg, err := config.LoadDefaultConfig(ctx,
+		config.WithRegion("us-east-1"),
+		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider("TESTKEY", "TESTSECRET", "")),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -489,7 +503,10 @@ func runPrefixTestWithBackends(t *testing.T, objects []string, expectPrefixes in
 			bucket := "test-bucket"
 			backend.CreateBucket(bucket)
 
-			cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion("us-east-1"))
+ cfg, err := config.LoadDefaultConfig(ctx,
+	 config.WithRegion("us-east-1"),
+ config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider("TESTKEY", "TESTSECRET", "")),
+ )
 			if err != nil {
 				t.Fatal(err)
 			}
