@@ -138,6 +138,6 @@ func main() {
 		log.Fatalf("listing failed: %v", err)
 	}
 	if showStats {
-		fmt.Printf("\nStatistics:\nObjects: %d\nPrefixes: %d\nPages: %d\n", stats.Objects, stats.Prefixes, stats.Pages)
+		fmt.Fprintf(os.Stderr, "\nStatistics:\nObjects: %d\nPrefixes: %d\nPages: %d\n", stats.Objects, stats.Prefixes, stats.Pages)
 	}
 }
