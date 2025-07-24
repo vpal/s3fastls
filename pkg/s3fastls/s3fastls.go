@@ -22,7 +22,7 @@ type Formatter func([]string) string
 
 const (
 	// bufferSize is the size of channel buffer per worker
-	bufferSize = 1024
+	bufferSize = 64
 
 	FieldKey          Field = "Key"
 	FieldSize         Field = "Size"
