@@ -32,6 +32,7 @@ func (f *FieldsFlag) Set(value string) error {
 	if value == "" {
 		return fmt.Errorf("fields cannot be empty")
 	}
+	*f = nil
 	for s := range strings.SplitSeq(value, ",") {
 		field, err := parseField(s)
 		if err != nil {
