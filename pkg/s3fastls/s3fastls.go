@@ -55,7 +55,6 @@ type s3FastLS struct {
 	fields         []Field
 	writer         io.Writer
 	formatter      Formatter
-	listWorkers    int
 	processWorkers int
 	objsCh         chan []types.Object
 	recordsCh      chan [][]string
@@ -266,7 +265,6 @@ func List(
 		formatter:      params.Formatter,
 		fields:         params.OutputFields,
 		writer:         writer,
-		listWorkers:    params.Workers,
 		processWorkers: processPagesWorkers,
 		objsCh:         make(chan []types.Object, params.Workers*bufferSize),
 		recordsCh:      make(chan [][]string, processPagesWorkers*bufferSize),
