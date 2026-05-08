@@ -8,7 +8,7 @@ s3fastls is a command-line tool and Go library for recursively listing Amazon S3
 - **Thread control**: The number of concurrent prefix listing workers is user-configurable via the `--workers` flag (defaults to the number of CPU cores).
 - **Custom endpoint support**: Can be used with S3-compatible storage by specifying a custom endpoint.
 - **File output**: Write results to a file instead of stdout using the `--output` flag.
-- **Configurable retry behavior**: Control retry attempts and backoff durations for S3 operations.
+- **Configurable retry behavior**: Control retry attempts and maximum backoff duration for S3 operations.
 - **Library and CLI**: Use as a Go library or as a standalone command-line tool.
 - **Robust error handling**: All errors from S3, context cancellation, and output writers are propagated and joined as needed. Context errors are detected and surfaced as such.
 - **Testability**: The library is designed for easy testing with mocks and fakes, and includes testing for paging, context cancellation, and error propagation.
@@ -99,9 +99,8 @@ s3fastls.FieldStorageClass // Storage class
 ### Retry Configuration
 ```go
 retryConfig := s3fastls.RetryConfig{
-    MaxAttempts: 10,           // Maximum number of retry attempts
+    MaxAttempts: 10,               // Maximum number of retry attempts
     MaxBackoff:  30 * time.Second, // Maximum backoff duration between retries
-    MinBackoff:  1 * time.Second,  // Minimum backoff duration for first retry
 }
 ```
 

@@ -71,14 +71,12 @@ type s3FastLS struct {
 type RetryConfig struct {
 	MaxAttempts int
 	MaxBackoff  time.Duration
-	MinBackoff  time.Duration
 }
 
 func DefaultRetryConfig() RetryConfig {
 	return RetryConfig{
 		MaxAttempts: 10,
 		MaxBackoff:  30 * time.Second,
-		MinBackoff:  1 * time.Second,
 	}
 }
 
