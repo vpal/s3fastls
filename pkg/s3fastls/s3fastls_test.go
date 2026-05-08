@@ -13,9 +13,9 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/aws/retry"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
-	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/johannesboyne/gofakes3"
 	"github.com/johannesboyne/gofakes3/backend/s3mem"
 )
@@ -520,10 +520,10 @@ func runPrefixTestWithBackends(t *testing.T, objects []string, expectPrefixes in
 			bucket := "test-bucket"
 			backend.CreateBucket(bucket)
 
- cfg, err := config.LoadDefaultConfig(ctx,
-	 config.WithRegion("us-east-1"),
- config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider("TESTKEY", "TESTSECRET", "")),
- )
+			cfg, err := config.LoadDefaultConfig(ctx,
+				config.WithRegion("us-east-1"),
+				config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider("TESTKEY", "TESTSECRET", "")),
+			)
 			if err != nil {
 				t.Fatal(err)
 			}
