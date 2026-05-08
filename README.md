@@ -103,6 +103,9 @@ retryConfig := s3fastls.RetryConfig{
 }
 ```
 
+## Go Version Support
+s3fastls requires Go 1.25 or newer.
+
 ## Build and Test
 To build the command-line tool:
 ```
