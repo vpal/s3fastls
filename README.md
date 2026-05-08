@@ -29,7 +29,6 @@ s3fastls --bucket <bucket> [options]
 - `--fields`: Comma-separated list of fields to print (default: Key)
 - `--output`: Write output to file instead of stdout
 - `--workers`: Number of concurrent S3 listing workers (default: number of CPU cores)
-- `--output-format`: Output format (default: tsv; see below)
 - `--stats`: Print statistics after listing
 
 ### Example
