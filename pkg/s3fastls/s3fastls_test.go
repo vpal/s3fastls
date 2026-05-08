@@ -152,6 +152,23 @@ func TestList_Basic(t *testing.T) {
 	}
 }
 
+func TestList_InvalidWorkers(t *testing.T) {
+	for _, workers := range []int{0, -1} {
+		t.Run(fmt.Sprintf("workers_%d", workers), func(t *testing.T) {
+			stats, err := List(context.Background(), S3FastLSParams{Workers: workers}, nil, nil)
+			if err == nil {
+				t.Fatal("expected error")
+			}
+			if !strings.Contains(err.Error(), "workers must be at least 1") {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if stats != (Stats{}) {
+				t.Fatalf("expected zero stats, got %+v", stats)
+			}
+		})
+	}
+}
+
 func TestList_WriterError(t *testing.T) {
 	ctx := context.Background()
 	client := &slowPagingMockS3Client{}
