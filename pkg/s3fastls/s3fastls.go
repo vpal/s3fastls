@@ -254,6 +254,10 @@ func List(
 	client S3ListObjectsV2API,
 	writer io.Writer,
 ) (Stats, error) {
+	if params.Workers < 1 {
+		return Stats{}, fmt.Errorf("workers must be at least 1, got %d", params.Workers)
+	}
+
 	processPagesWorkers := min(params.Workers, runtime.NumCPU())
 
 	s3ls := &s3FastLS{
