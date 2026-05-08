@@ -4,7 +4,7 @@ s3fastls is a command-line tool and Go library for recursively listing Amazon S3
 
 ## Features
 - **Recursive and concurrent listing**: Spawns a new listing goroutine for each discovered prefix, allowing for fast traversal of large and deeply nested S3 buckets.
-- **Customizable output**: Choose which S3 object fields to display (e.g., Key, Size, LastModified, ETag, StorageClass) and output format (currently TSV).
+- **Customizable output**: Choose which S3 object fields to display (e.g., Key, Size, LastModified, ETag, StorageClass). The CLI writes TSV, and library callers can provide a custom formatter.
 - **Thread control**: The number of concurrent prefix listing workers is user-configurable via the `--workers` flag (defaults to the number of CPU cores).
 - **Custom endpoint support**: Can be used with S3-compatible storage by specifying a custom endpoint.
 - **File output**: Write results to a file instead of stdout using the `--output` flag.
