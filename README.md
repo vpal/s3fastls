@@ -41,7 +41,7 @@ s3fastls --bucket my-bucket --region us-east-1 --fields Key,Size,LastModified --
 
 ### Basic Usage
 ```go
-import "github.com/vpal/s3fastls/s3fastls"
+import "github.com/vpal/s3fastls/pkg/s3fastls"
 
 ctx := context.Background()
 cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion("us-east-1"))
@@ -56,7 +56,7 @@ params := s3fastls.S3FastLSParams{
     Bucket:       "my-bucket",
     Prefix:       "",
     OutputFields: []s3fastls.Field{s3fastls.FieldKey, s3fastls.FieldSize},
-    Formatter:    s3fastls.TSVFormatter, // Use the built-in TSV formatter
+    Formatter:    s3fastls.FormatTSV, // Use the built-in TSV formatter
     Workers:      16,
 }
 
