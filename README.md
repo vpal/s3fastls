@@ -1,126 +1,172 @@
 # s3fastls
 
-s3fastls is a command-line tool and Go library for recursively listing Amazon S3 buckets in a highly concurrent manner. It uses "/" as a delimiter to simulate directory traversal, starting a new S3 ListObjectsV2 pager for each discovered prefix (e.g., `a/`, then `a/b/`, then `a/b/c/`, etc.), enabling fast and deep exploration of S3 bucket hierarchies.
+A command-line tool and Go package for recursively listing objects in an S3
+bucket. It lists `/`-separated prefixes concurrently and writes object keys or
+selected metadata as tab-separated text.
 
-## Features
-- **Recursive and concurrent listing**: Spawns a new listing goroutine for each discovered prefix, allowing for fast traversal of large and deeply nested S3 buckets.
-- **Customizable output**: Choose which S3 object fields to display (e.g., Key, Size, LastModified, ETag, StorageClass). The CLI writes TSV, and library callers can provide a custom formatter.
-- **Thread control**: The number of concurrent prefix listing workers is user-configurable via the `--workers` flag (defaults to the number of CPU cores).
-- **Custom endpoint support**: Can be used with S3-compatible storage by specifying a custom endpoint.
-- **File output**: Write results to a file instead of stdout using the `--output` flag.
-- **Configurable retry behavior**: Control retry attempts and maximum backoff duration for S3 operations.
-- **Library and CLI**: Use as a Go library or as a standalone command-line tool.
-- **Robust error handling**: All errors from S3, context cancellation, and output writers are propagated and joined as needed. Context errors are detected and surfaced as such.
-- **Testability**: The library is designed for easy testing with mocks and fakes, and includes testing for paging, context cancellation, and error propagation.
+Each prefix is listed with `ListObjectsV2`, using `/` as the delimiter. Discovered
+subprefixes are listed by separate workers, up to the `--workers` limit. Pages
+within a prefix are fetched sequentially, so a flat key layout provides no
+parallel listing work. Listing each prefix separately allows concurrent requests,
+but can increase the total number of requests because each prefix needs at least
+one request, even if it contains only a few objects.
 
-## Usage as a Command-Line Tool
+## Build
 
-```
-s3fastls --bucket <bucket> [options]
-```
+Requires Go 1.25 or newer.
 
-### Required Command Line Options
-- `--bucket`: Name of the S3 bucket (required)
-
-### Optional Command Line Options
-- `--region`: AWS region of the bucket (can be set via environment or AWS config)
-- `--endpoint`: Custom S3 endpoint (for S3-compatible storage)
-- `--prefix`: Prefix to start listing from (default: root)
-- `--fields`: Comma-separated list of fields to print (default: Key)
-- `--output`: Write output to file instead of stdout
-- `--workers`: Number of concurrent S3 listing workers (default: number of CPU cores)
-- `--stats`: Print statistics after listing
-
-### Example
-
-```
-s3fastls --bucket my-bucket --region us-east-1 --fields Key,Size,LastModified --output results.tsv --workers 16
-```
-
-## Usage as a Go Library
-
-### Basic Usage
-```go
-import "github.com/vpal/s3fastls/pkg/s3fastls"
-
-ctx := context.Background()
-cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion("us-east-1"))
-if err != nil {
-    log.Fatalf("unable to load SDK config: %v", err)
-}
-
-retryConfig := s3fastls.DefaultRetryConfig()
-client := s3fastls.MakeS3Client(cfg, "", retryConfig)
-
-params := s3fastls.S3FastLSParams{
-    Bucket:       "my-bucket",
-    Prefix:       "",
-    OutputFields: []s3fastls.Field{s3fastls.FieldKey, s3fastls.FieldSize},
-    Formatter:    s3fastls.FormatTSV, // Use the built-in TSV formatter
-    Workers:      16,
-}
-
-var buf bytes.Buffer
-stats, err := s3fastls.List(ctx, params, client, &buf)
-if err != nil {
-    log.Fatalf("listing failed: %v", err)
-}
-fmt.Print(buf.String())
-fmt.Printf("Stats: %+v\n", stats)
-```
-
-### Custom Output Formatting
-You can provide your own formatting function:
-```go
-params.Formatter = func(fields []string) string {
-    return strings.Join(fields, ",") // CSV output
-}
-```
-
-### Error Handling and Context Support
-- The library is context-aware and propagates errors from S3, context cancellation, and output writers in a robust way.
-- If all errors are context-related (canceled or deadline exceeded), only the first context error is returned; otherwise, all non-context errors are joined and returned.
-- The List function will close all channels and cancel all goroutines on error or cancellation.
-
-## Statistics
-- After listing, statistics are available (number of objects, prefixes, and pages processed).
-- In the CLI, use `--stats` to print these statistics after listing.
-
-### Available Fields
-```go
-s3fastls.FieldKey          // Object key
-s3fastls.FieldSize         // Object size in bytes
-s3fastls.FieldLastModified // Last modified timestamp
-s3fastls.FieldETag         // Object ETag
-s3fastls.FieldStorageClass // Storage class
-```
-
-### Retry Configuration
-```go
-retryConfig := s3fastls.RetryConfig{
-    MaxAttempts: 10,               // Maximum number of retry attempts
-    MaxBackoff:  30 * time.Second, // Maximum backoff duration between retries
-}
-```
-
-## Go Version Support
-s3fastls requires Go 1.25 or newer.
-
-## Build and Test
-To build the command-line tool:
-```
+```sh
+git clone https://github.com/vpal/s3fastls.git
+cd s3fastls
 go build -o s3fastls ./cmd
 ```
-To run tests (including integration and error propagation tests):
-```
-go test -v ./...
+
+## Authentication
+
+s3fastls loads credentials and configuration through the
+[AWS SDK for Go v2](https://docs.aws.amazon.com/sdk-for-go/v2/developer-guide/configure-gosdk.html).
+It reads the shared `~/.aws/credentials` and `~/.aws/config` files. Select a named
+profile with `AWS_PROFILE`; otherwise the `default` profile is used:
+
+```sh
+AWS_PROFILE=work ./s3fastls --bucket my-bucket --region eu-west-1
 ```
 
-## Important Notes
-- **Too many workers can cause S3 to return HTTP 503 Slow Down errors.** Tune the `--workers` parameter according to your use case and S3 limits.
-- This tool is designed for speed and concurrency, but aggressive settings may impact S3 performance or cost.
-- All error handling, context cancellation, and channel closing is robust and tested.
-- Use this tool at your own risk. The authors are not responsible for any data loss, API throttling, or unexpected costs incurred by its use.
+For an existing IAM Identity Center (SSO) profile, first sign in with
+`aws sso login --profile work`, then run the command above. Repeat the login when
+the SSO session expires.
+
+You can also supply credentials through environment variables:
+
+```sh
+export AWS_ACCESS_KEY_ID='<access-key-id>'
+export AWS_SECRET_ACCESS_KEY='<secret-access-key>'
+export AWS_SESSION_TOKEN='<session-token>' # Only for temporary credentials
+export AWS_REGION=eu-west-1
+./s3fastls --bucket my-bucket
+```
+
+Environment access keys take precedence over profile credentials, including when
+`AWS_PROFILE` is set. The SDK also supports configured `credential_process`
+providers, web identity credentials, ECS task roles, and EC2 instance roles.
+Set `AWS_SHARED_CREDENTIALS_FILE` or `AWS_CONFIG_FILE` to use other file locations.
+
+The region is taken from `--region`, then `AWS_REGION` (or `AWS_DEFAULT_REGION`),
+then the selected profile's `region` setting. s3fastls does not discover the
+bucket's region.
+
+For a general purpose S3 bucket, the caller needs `s3:ListBucket` permission on the
+bucket ARN, for example `arn:aws:s3:::my-bucket`. Object contents are not read, so
+`s3:GetObject` is not required. See the
+[ListObjectsV2 permissions](https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListObjectsV2.html).
+
+## Usage
+
+List all object keys:
+
+```sh
+./s3fastls --bucket my-bucket --region eu-west-1
+```
+
+List a prefix with size and modification time, writing results to a file:
+
+```sh
+./s3fastls --bucket my-bucket --region eu-west-1 \
+  --prefix logs/2026/ --fields Key,Size,LastModified \
+  --workers 16 --output objects.tsv --stats
+```
+
+`--prefix` is a literal key prefix. For example, `logs/` selects keys below that
+prefix, while `logs` also matches keys such as `logs-old/file.txt`.
+
+| Flag | Description | Default |
+| --- | --- | --- |
+| `--bucket` | Bucket name | Required |
+| `--region` | AWS region | Environment or profile |
+| `--endpoint` | Custom S3 endpoint URL | SDK endpoint resolution |
+| `--prefix` | Key prefix to list recursively | Entire bucket |
+| `--fields` | Comma-separated field names, in output order | `Key` |
+| `--workers` | Maximum concurrent prefix listings; must be at least 1 | `runtime.NumCPU()` |
+| `--output` | Output file; overwrites an existing file | Standard output |
+| `--stats` | Print object, prefix, and page counts to standard error after success | `false` |
+
+Field names are case-sensitive: `Key`, `Size`, `LastModified`, `ETag`, and
+`StorageClass`. Sizes are in bytes and timestamps use RFC 3339. Output has no
+header; fields are separated by tabs and records by newlines. Values are not
+escaped, so tabs or newlines in keys affect the output layout.
+
+Output order is unspecified. If a listing fails or is interrupted, the output
+may be incomplete and the command exits with a nonzero status.
+
+For an S3-compatible service, set its endpoint, credentials, and signing region:
+
+```sh
+AWS_PROFILE=storage ./s3fastls --bucket my-bucket \
+  --endpoint https://s3.example.com --region us-east-1
+```
+
+The client uses the SDK's default bucket addressing behavior. The CLI has no
+option to force path-style addressing.
+
+Retryable requests use the SDK's standard retryer, configured for up to 10
+attempts in total, with a maximum backoff of 30 seconds. These settings can be
+changed through the Go API.
+
+## Go package
+
+`List` accepts an S3 client, a context, and an `io.Writer`, and returns listing
+statistics and an error. Set the output fields, formatter, and worker count
+explicitly:
+
+```go
+package main
+
+import (
+	"context"
+	"log"
+	"os"
+
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/vpal/s3fastls/pkg/s3fastls"
+)
+
+func main() {
+	ctx := context.Background()
+	cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion("eu-west-1"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	client := s3fastls.MakeS3Client(cfg, "", s3fastls.DefaultRetryConfig())
+
+	stats, err := s3fastls.List(ctx, s3fastls.S3FastLSParams{
+		Bucket:       "my-bucket",
+		Prefix:       "logs/",
+		OutputFields: []s3fastls.Field{s3fastls.FieldKey, s3fastls.FieldSize},
+		Formatter:    s3fastls.FormatTSV,
+		Workers:      16,
+	}, client, os.Stdout)
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("Objects: %d, prefixes: %d, pages: %d",
+		stats.Objects, stats.Prefixes, stats.Pages)
+}
+```
+
+Use `RetryConfig` with `MakeS3Client` to change `MaxAttempts` and `MaxBackoff`, or
+pass your own client implementing `S3ListObjectsV2API` to `List`. A custom
+`Formatter` receives the selected field values and returns a record; `List` adds
+the trailing newline.
+
+## Tests
+
+The tests use mock clients and a local in-memory S3 server; no AWS account is
+needed.
+
+```sh
+go test ./...
+```
 
 ## License
+
 MIT License
